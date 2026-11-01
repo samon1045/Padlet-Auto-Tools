@@ -2,7 +2,6 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 投稿用メッセージ
 const LONG_MESSAGE = process.env.CUSTOM_MESSAGE || ("おまえらやりませんねぇ杉！！さーもんの集いに参加 https://padlet.com/goodtanaka/m ".repeat(40) + "\n（うおｗ）\n" + "あ".repeat(900));
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
@@ -32,7 +31,7 @@ async function main() {
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(2000);
 
-        const TOTAL_ROUNDS = 15; 
+        const TOTAL_ROUNDS = 1000; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);
@@ -42,9 +41,6 @@ async function main() {
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(200);
 
-                // ==========================================
-                // 各セクションの「＋」ボタンを確実に検出・取得
-                // ==========================================
                 let clicked = false;
 
                 clicked = await page.evaluate((rIdx) => {
@@ -87,15 +83,11 @@ async function main() {
 
                 await page.waitForTimeout(500);
 
-                // ==========================================
-                // テキスト入力・画像添付・Publish・Done
-                // ==========================================
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 });
                 if (editor) {
                     await editor.fill(LONG_MESSAGE);
                     await page.waitForTimeout(200);
 
-                    // 画像添付
                     if (fs.existsSync(IMAGE_PATH)) {
                         const fileInput = await page.$('input[type="file"]');
                         if (fileInput) {
@@ -104,13 +96,11 @@ async function main() {
                         }
                     }
 
-                    // 投稿（Publish）
                     const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]', { state: 'visible', timeout: 3000 });
                     if (publishBtn) {
                         await publishBtn.click();
                         await page.waitForTimeout(500);
 
-                        // 名前入力ポップアップの「Done」自動処理
                         try {
                             const doneBtn = await page.waitForSelector('button:has-text("Done"), button:has-text("完了"), [data-testid="guest-done-button"]', { timeout: 1500 });
                             if (doneBtn) {

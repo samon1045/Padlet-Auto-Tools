@@ -1,62 +1,36 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const fs = require('fs');
 
-// GitHub Actionsの入力値、またはデフォルト値を使用
 const MESSAGE_TO_POST = process.env.CUSTOM_MESSAGE || "おまえらやりませんねぇ杉！！";
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).png');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
 async function main() {
+    // GitHub Secretsから渡された認証情報（JSON）がある場合はファイルに書き出す
+    if (process.env.AUTH_JSON) {
+        fs.writeFileSync('auth.json', process.env.AUTH_JSON);
+    }
+
+    // 保存されたセッション（cookie）があれば読み込んでブラウザを起動
+    const hasStorageState = fs.existsSync('auth.json');
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
+    const context = await browser.newContext(
+        hasStorageState ? { storageState: 'auth.json' } : {}
+    );
     const page = await context.newPage();
 
     try {
-        console.log('Padletにログイン中...');
-        await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
+        console.log('保存されたセッション情報でPadletにアクセス中...');
+        await page.goto('https://padlet.com/dashboard', { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(3000);
 
-        // 「Log in」ボタンがあればクリック
-        const loginButton = await page.$('a[href*="/login"], button:has-text("Log in")');
-        if (loginButton) {
-            console.log('「Log in」ボタンを見つけたのでクリックします');
-            await loginButton.click();
-            await page.waitForTimeout(2000);
+        // もしログイン画面に飛ばされてしまった場合はセッション切れ
+        if (page.url().includes('login') || page.url().includes('verify')) {
+            throw new Error('セッションの有効期限が切れているか、ログインしていません。認証情報を更新してください。');
         }
 
-        // メールアドレスを入力
-        await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
-        await page.fill('input[name="email"], input[type="email"]', process.env.PADLET_EMAIL);
-        
-        // 「次へ」ボタンがあればクリック
-        const nextButton = await page.$('button:has-text("次へ"), button:has-text("Continue"), button[type="submit"]');
-        if (nextButton) {
-            console.log('「次へ」ボタンをクリックしました');
-            await nextButton.click();
-            await page.waitForTimeout(2000);
-        }
-
-        // パスワード入力欄が表示されるのを待ってから入力
-        const passwordInput = await page.waitForSelector('input[name="password"], input[type="password"]', { state: 'visible', timeout: 15000 });
-        await passwordInput.fill(process.env.PADLET_PASSWORD);
-        
-        // ログインボタンを押す
-        const submitButton = await page.$('button[type="submit"], button:has-text("Log in"), button:has-text("ログイン")');
-        if (submitButton) {
-            await submitButton.click();
-        }
-        
-        // ログイン後のURLや画面遷移のチェック
-        await page.waitForTimeout(5000);
-        const currentUrl = page.url();
-        console.log('現在のURL:', currentUrl);
-
-        if (currentUrl.includes('verify-login-email-address')) {
-            console.log('⚠️ メール認証画面が検知されました。');
-            throw new Error('Padlet側でメール認証（セキュリティ確認）が要求されたため中断しました。');
-        }
-
-        await page.waitForURL('**/dashboard**', { timeout: 30000 });
-        console.log('ダッシュボードにログインしました！');
+        console.log('ダッシュボードへのログインを確認しました！');
 
         if (!TARGET_BOARD_URL) {
             throw new Error('投稿先のPadletのURL（TARGET_URL）が指定されていません。');

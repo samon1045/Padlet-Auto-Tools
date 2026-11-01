@@ -38,7 +38,7 @@ async function main() {
         await page.waitForTimeout(2000);
 
         // 🔄 連続2回ループ（超爆速モード）
-        for (let round = 1; round <= 2; round++) {
+        for (let round = 1; round <= 15; round++) {
             console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);
 
             // ==========================================

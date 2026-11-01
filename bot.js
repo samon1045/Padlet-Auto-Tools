@@ -32,35 +32,37 @@ async function main() {
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(2000);
 
-        // 🔍 各セクションの一番下にある「+」または「投稿を追加」ボタンだけに絞り込む
-        let sectionAddButtons = await page.$$(
-            'button.section-add-button, ' +
-            'button[aria-label*="セクションに投稿"], ' +
-            'button[aria-label*="Add post to section"], ' +
-            '[data-testid="section-add-post-button"]'
-        );
-
-        console.log(`正確に検出されたセクション追加ボタン数: ${sectionAddButtons.length} 個`);
-
         const TOTAL_ROUNDS = 15; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);
 
             try {
-                // 余計なポップアップを閉じるためEscを数回
+                // 余計なポップアップを閉じる
                 await page.keyboard.press('Escape');
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(200);
 
+                // ==========================================
+                // 毎ラウンド、セクションの追加ボタンを最新状態で再取得
+                // ==========================================
+                let sectionAddButtons = await page.$$(
+                    'button.section-add-button, ' +
+                    'button[aria-label*="セクションに投稿"], ' +
+                    'button[aria-label*="Add post to section"], ' +
+                    '[data-testid="section-add-post-button"]'
+                );
+
                 if (sectionAddButtons.length > 0) {
                     const btnIndex = (round - 1) % sectionAddButtons.length;
-                    console.log(`今回は ${btnIndex + 1} 番目のセクション追加ボタンをクリックします`);
+                    console.log(`全 ${sectionAddButtons.length} 個のセクション中、${btnIndex + 1} 番目のセクションボタンをクリックします`);
                     
+                    // 確実にその要素をクリック
                     await sectionAddButtons[btnIndex].click();
                     await page.waitForTimeout(500);
                 } else {
-                    // セクションがない場合は画面下の全体追加ボタン
+                    // セクションがない場合は全体追加ボタン
+                    console.log('セクションがないため全体の追加ボタンを使用します');
                     await page.evaluate(() => {
                         const buttons = Array.from(document.querySelectorAll('button'));
                         const target = buttons.find(b => (b.innerText || '').includes('Post') || (b.innerText || '').includes('投稿'));
@@ -107,7 +109,7 @@ async function main() {
                             });
                         }
 
-                        console.log(`第 ${round} 回の投稿が完全に完了しました！`);
+                        console.log(`第 ${round} 回の投稿が完了しました！`);
                     }
                 }
             } catch (err) {

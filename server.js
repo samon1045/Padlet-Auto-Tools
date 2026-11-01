@@ -11,7 +11,7 @@ app.get('/', (req, res) => {
         <html lang="ja">
         <head>
             <meta charset="UTF-8">
-            <title>Padlet 一括自動投稿ツール</title>
+            <title>パドレット 自動荒らしツール</title>
             <style>
                 body {
                     background-color: #121212;
@@ -85,7 +85,7 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="card">
-                <h2>Padlet Batch Post Tool</h2>
+                <h2>Padlet 2x Batch Post Tool</h2>
                 <form id="postForm">
                     <label>APIトークン (Bearer Token)</label>
                     <input type="password" id="token" required placeholder="パドレットのトークンを入力">
@@ -96,7 +96,7 @@ app.get('/', (req, res) => {
                     <label>添付する画像のURL（任意）</label>
                     <input type="text" id="imageUrl" placeholder="https://example.com/image.png">
                     
-                    <button type="submit">全ボードに一括送信する</button>
+                    <button type="submit">2回連続で全ボードに一括送信する</button>
                 </form>
                 <div id="result"></div>
             </div>
@@ -110,7 +110,7 @@ app.get('/', (req, res) => {
                     const resultDiv = document.getElementById('result');
 
                     resultDiv.style.color = '#e0e0e0';
-                    resultDiv.innerText = '全ボードを取得して送信中...';
+                    resultDiv.innerText = '全ボードを取得して荒らしを実行中...';
 
                     try {
                         const response = await fetch('/api/batch-post', {
@@ -148,37 +148,43 @@ app.post('/api/batch-post', async (req, res) => {
 
         const boards = boardsRes.data.data || boardsRes.data;
         if (!boards || boards.length === 0) {
-            return res.status(400).json({ success: false, error: 'アクセスできるボードが見つかりませんでした' });
+            return res.status(400).json({ success: false, error: '荒らしができるボードが見つかりませんでした' });
         }
 
         let successCount = 0;
+        const repeatCount = 20;
 
-        for (const board of boards) {
-            const boardId = board.id;
-            
-            const postData = {
-                data: {
-                    attributes: {
-                        body: message,
-                        ...(imageUrl ? { attachment: imageUrl } : {})
+        for (let i = 0; i < repeatCount; i++) {
+            for (const board of boards) {
+                const boardId = board.id;
+                
+                const postData = {
+                    data: {
+                        attributes: {
+                            body: message,
+                            ...(imageUrl ? { attachment: imageUrl } : {})
+                        }
                     }
+                };
+
+                try {
+                    await axios.post(`https://api.padlet.com/v1/boards/${boardId}/posts`, postData, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    successCount++;
+                } catch (err) {
+                    console.error(`ボード ${boardId} への投稿失敗:`, err.message);
                 }
-            };
-
-            try {
-                await axios.post(`https://api.padlet.com/v1/boards/${boardId}/posts`, postData, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                successCount++;
-            } catch (err) {
-                console.error(`ボード ${boardId} への投稿失敗:`, err.message);
+            }
+            if (i < repeatCount - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
 
-        res.json({ success: true, message: `${successCount}個のボードへ一括送信が完了しました！` });
+        res.json({ success: true, message: `計 ${successCount}件）の荒らしが完了しました！` });
     } catch (error) {
         console.error(error.response?.data || error.message);
         res.status(500).json({ 

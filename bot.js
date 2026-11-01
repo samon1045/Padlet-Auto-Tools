@@ -43,7 +43,7 @@ async function main() {
 
         console.log(`検出されたセクション追加ボタン数: ${sectionAddButtons.length} 個`);
 
-        const TOTAL_ROUNDS = 15; 
+        const TOTAL_ROUNDS = 200; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);

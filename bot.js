@@ -1,4 +1,4 @@
-const { chromium } = require('playwheel'); // 誤字修正用含む
+const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
@@ -47,12 +47,9 @@ async function main() {
                 // ==========================================
                 let clicked = false;
 
-                // 各セクション（カラム）の下部にある「＋」ボタンをDOMから直接探してクリック
                 clicked = await page.evaluate((rIdx) => {
-                    // セクション内の「＋」ボタンや、テキスト/記号が「＋」のものをすべて取得
                     const sections = Array.from(document.querySelectorAll('div[data-section-id], section, div[class*="section"]'));
                     
-                    // 各セクションの中にある追加ボタンを探す
                     const targetButtons = [];
                     sections.forEach(sec => {
                         const btns = Array.from(sec.querySelectorAll('button, div[role="button"]'));
@@ -64,7 +61,6 @@ async function main() {
                         if (addBtn) targetButtons.push(addBtn);
                     });
 
-                    // もしセクション内ボタンが個別に見つからなければ、ページ全体の「+」ボタンを収集
                     let finalBtns = targetButtons;
                     if (finalBtns.length === 0) {
                         finalBtns = Array.from(document.querySelectorAll('button')).filter(b => (b.innerText || '').includes('+'));
@@ -129,7 +125,7 @@ async function main() {
                             });
                         }
 
-                        console.log(`第 ${round} 回の投稿が完了しました！`);
+                        console.log(`第 ${round} 回の投稿が完全に完了しました！`);
                     }
                 }
             } catch (err) {

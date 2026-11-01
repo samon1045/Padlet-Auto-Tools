@@ -14,7 +14,7 @@ async function main() {
         console.log('Padletにログイン中...');
         await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
 
-        // もしプロフィールページなどに飛ばされていて「Log in」ボタンがある場合はクリックする
+        // プロフィールページ等に飛ばされている場合の「Log in」ボタン対策
         const loginButton = await page.$('a[href*="/login"], button:has-text("Log in")');
         if (loginButton) {
             console.log('「Log in」ボタンを見つけたのでクリックします');
@@ -22,9 +22,14 @@ async function main() {
             await page.waitForTimeout(2000);
         }
 
+        // メールアドレス入力
         await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
         await page.fill('input[name="email"], input[type="email"]', process.env.PADLET_EMAIL);
-        await page.fill('input[name="password"], input[type="password"]', process.env.PADLET_PASSWORD);
+        
+        // パスワード入力欄が表示されるのを待ってから入力
+        const passwordInput = await page.waitForSelector('input[name="password"], input[type="password"]', { state: 'visible', timeout: 15000 });
+        await passwordInput.fill(process.env.PADLET_PASSWORD);
+        
         await page.click('button[type="submit"]');
         
         await page.waitForURL('**/dashboard**', { timeout: 30000 });
@@ -49,8 +54,7 @@ async function main() {
                     await page.waitForTimeout(2000);
 
                     console.log(`メッセージ「${MESSAGE_TO_POST}」を投稿中...`);
-
-                    console.log('コメント欄へも送信中...');
+                    // 実際の投稿処理はここに追加していきます
 
                 } catch (boardErr) {
                     console.error(`ボード ${boardUrl} でエラーが発生しました:`, boardErr.message);

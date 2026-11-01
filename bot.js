@@ -32,22 +32,17 @@ async function main() {
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'networkidle' });
         await page.waitForTimeout(2000);
 
-        // 🔄 指定されたラウンド数実行
         const TOTAL_ROUNDS = 15; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n⚡ 【ラウンド ${round}回目】開始`);
 
-            // ESCキーで既存のモーダル等を閉じる
             await page.keyboard.press('Escape');
             await page.waitForTimeout(300);
 
-            // ==========================================
             // 1. 新規投稿ボタン（+ Post）の検出とクリック
-            // ==========================================
             let clicked = false;
 
-            // 1-1. テキスト検索・DOM直接クリック
             clicked = await page.evaluate(() => {
                 const buttons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
                 const target = buttons.find(b => {
@@ -61,7 +56,6 @@ async function main() {
                 return false;
             });
 
-            // 1-2. 見つからない場合はPlaywrightのSelectorで探す
             if (!clicked) {
                 const addBtn = await page.$('button:has-text("Post"), button:has-text("投稿"), [data-testid="add-post-button"], .section-add-button');
                 if (addBtn) {
@@ -70,29 +64,13 @@ async function main() {
                 }
             }
 
-            // 1-3. 最終手段としてキーボードショートカット 'n'
             if (!clicked) {
-                console.log('ボタンが見つからないため「n」キーを押します');
                 await page.keyboard.press('n');
             }
 
             await page.waitForTimeout(1000);
 
-            // ==========================================
-            // 2. 未ログインポップアップ/名前入力のスキップ処理
-            // ==========================================
-            try {
-                // ゲストとして続行/Done等のボタンが出たらクリック
-                const guestBtn = await page.$('button:has-text("Continue as guest"), button:has-text("Done"), button:has-text("完了")');
-                if (guestBtn) {
-                    await guestBtn.click();
-                    await page.waitForTimeout(500);
-                }
-            } catch (e) {}
-
-            // ==========================================
-            // 3. テキスト入力と投稿
-            // ==========================================
+            // 2. テキスト入力と投稿
             try {
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea, input[type="text"]', { timeout: 3000 });
                 if (editor) {
@@ -108,16 +86,34 @@ async function main() {
                         }
                     }
 
-                    // 投稿（Publish）ボタンクリック
+                    // Publishボタンクリック
                     const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), button[data-testid="publish-button"]', { state: 'visible', timeout: 3000 });
                     if (publishBtn) {
                         await publishBtn.click();
-                        console.log(`第 ${round} 回の投稿に成功しました！`);
+                        await page.waitForTimeout(1000);
+
+                        // 3. 投稿後の「Done」ポップアップの確実な自動処理
+                        try {
+                            const doneBtn = await page.waitForSelector('button:has-text("Done"), button:has-text("完了"), [data-testid="guest-done-button"]', { timeout: 3000 });
+                            if (doneBtn) {
+                                await doneBtn.click();
+                                await page.waitForTimeout(800);
+                            }
+                        } catch (e) {
+                            // DOMから直接Doneボタンを探してクリック
+                            await page.evaluate(() => {
+                                const btns = Array.from(document.querySelectorAll('button'));
+                                const dBtn = btns.find(b => b.innerText.includes('Done') || b.innerText.includes('完了'));
+                                if (dBtn) dBtn.click();
+                            });
+                        }
+
+                        console.log(`第 ${round} 回の投稿が完全に完了しました！`);
                         await page.waitForTimeout(1000);
                     }
                 }
             } catch (err) {
-                console.log(`第 ${round} 回の投稿フォームが開けませんでした。スキップします。`);
+                console.log(`第 ${round} 回の投稿処理中にエラーが発生しました。スキップします。`);
                 await page.keyboard.press('Escape');
             }
         }

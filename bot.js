@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const MESSAGE_TO_POST = process.env.CUSTOM_MESSAGE || "おまえらやりませんねぇ杉！！";
-const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).png');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
 async function main() {

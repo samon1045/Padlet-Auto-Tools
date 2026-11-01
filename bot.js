@@ -11,8 +11,11 @@ async function main() {
     const page = await context.newPage();
 
     try {
-        console.log('Padletにログイン中...');
+console.log('Padletにログイン中...');
         await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
+
+        // ★いま実際に開いているURLをログに出力する
+        console.log('現在のURL:', page.url());
 
         // 画面上のすべての input タグの情報をログに出力する
         const inputInfo = await page.$$eval('input', inputs => 
@@ -22,6 +25,7 @@ async function main() {
 
         await page.screenshot({ path: 'login-page.png', fullPage: true });
         console.log('ログイン画面のスクリーンショットを保存しました。');
+        
         await page.fill('input[name="email"], input[type="email"]', process.env.PADLET_EMAIL);
         await page.fill('input[name="password"], input[type="password"]', process.env.PADLET_PASSWORD);
         await page.click('button[type="submit"]');

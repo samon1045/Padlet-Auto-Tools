@@ -35,34 +35,37 @@ async function main() {
         const TOTAL_ROUNDS = 15; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-            console.log(`\n⚡ 【ハイブリッド爆撃ラウンド ${round}回目】開始`);
+            console.log(`\n⚡ 【ラウンド ${round}回目】開始`);
 
             try {
                 await page.keyboard.press('Escape');
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(100);
 
-                let postCreated = false;
-                let commentBombed = false;
+                let actionDone = false;
 
                 // ==========================================
-                // 1. まず「新規投稿」の作成を試みる
+                // 1. 各セクションの「＋」ボタン（追加ボタン）を正確に狙う
                 // ==========================================
                 const clickedSection = await page.evaluate((rIdx) => {
+                    // 各セクションのコンテナを取得
                     const sections = Array.from(document.querySelectorAll('div[data-section-id], section, div[class*="section"]'));
-                    const targetButtons = [];
+                    const addButtons = [];
+
                     sections.forEach(sec => {
-                        const btns = Array.from(sec.querySelectorAll('button, div[role="button"]'));
-                        const addBtn = btns.find(b => {
-                            const text = b.innerText || b.textContent || '';
+                        // セクション内にあるボタンやクリック可能要素のうち、明確に「＋」や「追加」のものに絞る
+                        const btns = Array.from(sec.querySelectorAll('button'));
+                        const matchBtn = btns.find(b => {
+                            const text = (b.innerText || b.textContent || '').trim();
                             const aria = b.getAttribute('aria-label') || '';
-                            return text.includes('+') || aria.includes('Add') || aria.includes('投稿') || b.className.includes('add');
+                            // 絵文字やメニュー（...）を除外して「+」または「Add」だけを狙う
+                            return text === '+' || text.toLowerCase() === 'add' || aria.includes('Add post') || aria.includes('投稿を追加');
                         });
-                        if (addBtn) targetButtons.push(addBtn);
+                        if (matchBtn) addButtons.push(matchBtn);
                     });
 
-                    if (targetButtons.length > 0) {
-                        const target = targetButtons[(rIdx - 1) % targetButtons.length];
+                    if (addButtons.length > 0) {
+                        const target = addButtons[(rIdx - 1) % addButtons.length];
                         target.click();
                         return true;
                     }
@@ -71,13 +74,14 @@ async function main() {
 
                 await page.waitForTimeout(400);
 
+                // 新規投稿のエディタが開いたかチェック
                 let editor = null;
                 try {
                     editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 1500 });
                 } catch (e) {}
 
                 if (editor) {
-                    // 新規投稿の作成に成功
+                    // 新規投稿の作成処理
                     await editor.fill(LONG_MESSAGE);
                     await page.waitForTimeout(100);
 
@@ -103,21 +107,21 @@ async function main() {
                         } catch (e) {}
 
                         console.log(`[成功] 第 ${round} 回：新規投稿を作成しました！`);
-                        postCreated = true;
+                        actionDone = true;
                     }
                 }
 
                 // ==========================================
-                // 2. 投稿が成功した場合は「既存投稿のコメントにも爆撃」を追加実行
-                // 3. 投稿が作れなかった場合は「メインでコメントに爆撃」
+                // 2. 新規投稿ができなかった場合、または追加で「+ Add comment」へ爆撃
                 // ==========================================
-                if (postCreated || !postCreated) {
-                    // 既存投稿のコメント欄を探して爆撃を試みる
+                if (!actionDone) {
+                    console.log('新規投稿ができないため、各投稿の「+ Add comment」へコメント爆撃します');
+                    
                     const clickedComment = await page.evaluate((rIdx) => {
                         const allElements = Array.from(document.querySelectorAll('button, div, span'));
                         const commentBtns = allElements.filter(el => {
-                            const text = el.innerText || el.textContent || '';
-                            return text.includes('Add comment') || text.includes('コメントを追加') || text.includes('+ Add');
+                            const text = (el.innerText || el.textContent || '').trim();
+                            return text === '+ Add comment' || text === 'コメントを追加' || text.includes('Add comment');
                         });
 
                         if (commentBtns.length > 0) {
@@ -147,28 +151,26 @@ async function main() {
                             if (submitBtn) {
                                 await submitBtn.click();
                                 await page.waitForTimeout(400);
-                                console.log(`[成功] 第 ${round} 回：既存投稿へのコメント爆撃も完了しました！`);
-                                commentBombed = true;
+                                console.log(`[成功] 第 ${round} 回：コメント爆撃が完了しました！`);
+                                actionDone = true;
                             }
                         }
                     }
                 }
 
-                // ==========================================
-                // 4. コメント爆撃もできなかった場合は、強制的に新規投稿を作成
-                // ==========================================
-                if (!postCreated && !commentBombed) {
-                    console.log(`[フォールバック] 第 ${round} 回：コメントができなかったため、全体追加ボタンから新規投稿を作成します`);
+                // どちらもダメだった場合の最終フォールバック
+                if (!actionDone) {
+                    console.log(`[フォールバック] 第 ${round} 回：全体の「+ Post」ボタンから投稿を試みます`);
                     await page.evaluate(() => {
                         const buttons = Array.from(document.querySelectorAll('button'));
-                        const target = buttons.find(b => (b.innerText || '').includes('Post') || (b.innerText || '').includes('投稿') || (b.innerText || '').includes('+'));
+                        const target = buttons.find(b => (b.innerText || '').includes('+ Post') || (b.innerText || '').includes('投稿'));
                         if (target) target.click();
                     });
                     await page.waitForTimeout(500);
 
-                    const fallbackEditor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 });
-                    if (fallbackEditor) {
-                        await fallbackEditor.fill(LONG_MESSAGE);
+                    const fbEditor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 });
+                    if (fbEditor) {
+                        await fbEditor.fill(LONG_MESSAGE);
                         await page.waitForTimeout(100);
 
                         if (fs.existsSync(IMAGE_PATH)) {
@@ -183,18 +185,18 @@ async function main() {
                         if (pubBtn) {
                             await pubBtn.click();
                             await page.waitForTimeout(400);
-                            console.log(`[成功] 第 ${round} 回：フォールバック新規投稿が完了しました！`);
+                            console.log(`[成功] 第 ${round} 回：フォールバック投稿が完了しました！`);
                         }
                     }
                 }
 
             } catch (err) {
-                console.log(`第 ${round} 回目で軽微なスキップが発生しました。次へ進みます。`);
+                console.log(`第 ${round} 回目でスキップが発生しました。次へ進みます。`);
                 await page.keyboard.press('Escape');
             }
         }
 
-        console.log('\n🎉 全てのハイブリッド爆撃処理が完了しました！');
+        console.log('\n🎉 全ての処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
 
     } catch (error) {

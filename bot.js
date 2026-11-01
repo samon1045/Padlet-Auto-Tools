@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const MESSAGE_TO_POST = process.env.CUSTOM_MESSAGE || "おまえらやりませんねぇ杉！！";
-const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).png');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif'); // 拡張子をgifに修正
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
 async function main() {
@@ -60,12 +60,12 @@ async function main() {
                 await editor.fill(MESSAGE_TO_POST);
                 await page.waitForTimeout(1000);
 
-                // 3. 画像ファイルを添付してアップロード完了をしっかり待つ
+                // 3. GIFファイルを添付してアップロード完了をしっかり待つ
                 const fileInput = await page.$('input[type="file"]');
                 if (fileInput) {
-                    console.log('画像をアップロード中...');
+                    console.log('GIF画像をアップロード中...');
                     await fileInput.setInputFiles(IMAGE_PATH);
-                    // 画像のアップロードとプレビュー表示が完了するまで待機
+                    // アップロードとプレビュー表示が完了するまで待機
                     await page.waitForTimeout(5000); 
                 }
 

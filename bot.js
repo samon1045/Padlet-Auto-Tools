@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 投稿・コメント用メッセージ（長文＆リンク付き）
+// 📝 投稿・コメント用メッセージ
 const LONG_MESSAGE = process.env.CUSTOM_MESSAGE || ("おまえらやりませんねぇ杉！！さーもんの集いに参加 https://padlet.com/goodtanaka/m ".repeat(40) + "\n（うおｗ）\n" + "あ".repeat(900));
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
@@ -35,20 +35,19 @@ async function main() {
         const TOTAL_ROUNDS = 15; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-            console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);
+            console.log(`\n⚡ 【ハイブリッド爆撃ラウンド ${round}回目】開始`);
 
             try {
-                // 余計なポップアップを強制解除
                 await page.keyboard.press('Escape');
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(100);
 
-                // ==========================================
-                // 1. 新規投稿トライ（失敗したらコメント爆撃へフォールバック）
-                // ==========================================
-                let successAction = false;
+                let postCreated = false;
+                let commentBombed = false;
 
-                // セクション内の「＋」ボタンをクリックしてみる
+                // ==========================================
+                // 1. まず「新規投稿」の作成を試みる
+                // ==========================================
                 const clickedSection = await page.evaluate((rIdx) => {
                     const sections = Array.from(document.querySelectorAll('div[data-section-id], section, div[class*="section"]'));
                     const targetButtons = [];
@@ -72,14 +71,13 @@ async function main() {
 
                 await page.waitForTimeout(400);
 
-                // エディタ（新規投稿欄）が出るかチェック
                 let editor = null;
                 try {
                     editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 1500 });
                 } catch (e) {}
 
                 if (editor) {
-                    // --- 新規投稿として送信 ---
+                    // 新規投稿の作成に成功
                     await editor.fill(LONG_MESSAGE);
                     await page.waitForTimeout(100);
 
@@ -96,7 +94,6 @@ async function main() {
                         await publishBtn.click();
                         await page.waitForTimeout(400);
 
-                        // ゲスト名入力などのDone処理
                         try {
                             const doneBtn = await page.waitForSelector('button:has-text("Done"), button:has-text("完了"), [data-testid="guest-done-button"]', { timeout: 1000 });
                             if (doneBtn) {
@@ -105,28 +102,35 @@ async function main() {
                             }
                         } catch (e) {}
 
-                        console.log(`第 ${round} 回：新規投稿が完了しました！`);
-                        successAction = true;
+                        console.log(`[成功] 第 ${round} 回：新規投稿を作成しました！`);
+                        postCreated = true;
                     }
                 }
 
                 // ==========================================
-                // 2. 新規投稿できなかった場合（コメント権限のみの部屋など）は既存コメント欄へ爆撃
+                // 2. 投稿が成功した場合は「既存投稿のコメントにも爆撃」を追加実行
+                // 3. 投稿が作れなかった場合は「メインでコメントに爆撃」
                 // ==========================================
-                if (!successAction) {
-                    console.log('新規投稿が制限されているため、既存の投稿カードのコメント欄へアタックします');
-                    await page.keyboard.press('Escape');
-                    await page.waitForTimeout(200);
+                if (postCreated || !postCreated) {
+                    // 既存投稿のコメント欄を探して爆撃を試みる
+                    const clickedComment = await page.evaluate((rIdx) => {
+                        const allElements = Array.from(document.querySelectorAll('button, div, span'));
+                        const commentBtns = allElements.filter(el => {
+                            const text = el.innerText || el.textContent || '';
+                            return text.includes('Add comment') || text.includes('コメントを追加') || text.includes('+ Add');
+                        });
 
-                    // 既存の投稿カードをすべて取得してクリック
-                    const posts = await page.$$('.post, [data-testid="post"], article, div[class*="post"]');
-                    if (posts.length > 0) {
-                        const targetPost = posts[(round - 1) % posts.length];
-                        await targetPost.click();
-                        await page.waitForTimeout(300);
+                        if (commentBtns.length > 0) {
+                            const target = commentBtns[(rIdx - 1) % commentBtns.length];
+                            target.click();
+                            return true;
+                        }
+                        return false;
+                    }, round);
 
-                        // コメント入力欄を探す
-                        const commentInput = await page.waitForSelector('textarea[placeholder*="コメント"], div[contenteditable="true"][data-placeholder*="コメント"], textarea, div[contenteditable="true"]', { timeout: 2000 });
+                    if (clickedComment) {
+                        await page.waitForTimeout(400);
+                        const commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 });
                         if (commentInput) {
                             await commentInput.fill(LONG_MESSAGE);
                             await page.waitForTimeout(100);
@@ -139,16 +143,48 @@ async function main() {
                                 }
                             }
 
-                            // コメント送信ボタン
-                            const submitBtn = await page.$('button:has-text("Publish"), button:has-text("コメント"), button[data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]');
+                            const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), button[data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 2000 });
                             if (submitBtn) {
                                 await submitBtn.click();
                                 await page.waitForTimeout(400);
+                                console.log(`[成功] 第 ${round} 回：既存投稿へのコメント爆撃も完了しました！`);
+                                commentBombed = true;
                             }
-                            console.log(`第 ${round} 回：既存投稿へのコメント爆撃が完了しました！`);
                         }
-                    } else {
-                        console.log(`第 ${round} 回：有効なターゲットが見つかりませんでした。`);
+                    }
+                }
+
+                // ==========================================
+                // 4. コメント爆撃もできなかった場合は、強制的に新規投稿を作成
+                // ==========================================
+                if (!postCreated && !commentBombed) {
+                    console.log(`[フォールバック] 第 ${round} 回：コメントができなかったため、全体追加ボタンから新規投稿を作成します`);
+                    await page.evaluate(() => {
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const target = buttons.find(b => (b.innerText || '').includes('Post') || (b.innerText || '').includes('投稿') || (b.innerText || '').includes('+'));
+                        if (target) target.click();
+                    });
+                    await page.waitForTimeout(500);
+
+                    const fallbackEditor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 });
+                    if (fallbackEditor) {
+                        await fallbackEditor.fill(LONG_MESSAGE);
+                        await page.waitForTimeout(100);
+
+                        if (fs.existsSync(IMAGE_PATH)) {
+                            const fileInput = await page.$('input[type="file"]');
+                            if (fileInput) {
+                                await fileInput.setInputFiles(IMAGE_PATH);
+                                await page.waitForTimeout(600);
+                            }
+                        }
+
+                        const pubBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]');
+                        if (pubBtn) {
+                            await pubBtn.click();
+                            await page.waitForTimeout(400);
+                            console.log(`[成功] 第 ${round} 回：フォールバック新規投稿が完了しました！`);
+                        }
                     }
                 }
 
@@ -158,7 +194,7 @@ async function main() {
             }
         }
 
-        console.log('\n🎉 全ての超爆速処理が完了しました！');
+        console.log('\n🎉 全てのハイブリッド爆撃処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
 
     } catch (error) {

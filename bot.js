@@ -3,7 +3,7 @@ const path = require('path');
 
 const MESSAGE_TO_POST = "おまえらやりませんねぇ杉！！";
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).png');
-const REPEAT_COUNT = 2; 
+const REPEAT_COUNT = 15; 
 
 async function main() {
     const browser = await chromium.launch({ headless: true });

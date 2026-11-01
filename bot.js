@@ -1,4 +1,4 @@
-const { chromium } = require('playwright');
+const { chromium } = require('playwheel'); // 誤字修正用含む
 const path = require('path');
 const fs = require('fs');
 
@@ -38,38 +38,58 @@ async function main() {
             console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);
 
             try {
-                // 余計なポップアップを閉じる
                 await page.keyboard.press('Escape');
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(200);
 
                 // ==========================================
-                // 毎ラウンド、セクションの追加ボタンを最新状態で再取得
+                // 各セクションの「＋」ボタンを確実に検出・取得
                 // ==========================================
-                let sectionAddButtons = await page.$$(
-                    'button.section-add-button, ' +
-                    'button[aria-label*="セクションに投稿"], ' +
-                    'button[aria-label*="Add post to section"], ' +
-                    '[data-testid="section-add-post-button"]'
-                );
+                let clicked = false;
 
-                if (sectionAddButtons.length > 0) {
-                    const btnIndex = (round - 1) % sectionAddButtons.length;
-                    console.log(`全 ${sectionAddButtons.length} 個のセクション中、${btnIndex + 1} 番目のセクションボタンをクリックします`);
+                // 各セクション（カラム）の下部にある「＋」ボタンをDOMから直接探してクリック
+                clicked = await page.evaluate((rIdx) => {
+                    // セクション内の「＋」ボタンや、テキスト/記号が「＋」のものをすべて取得
+                    const sections = Array.from(document.querySelectorAll('div[data-section-id], section, div[class*="section"]'));
                     
-                    // 確実にその要素をクリック
-                    await sectionAddButtons[btnIndex].click();
-                    await page.waitForTimeout(500);
+                    // 各セクションの中にある追加ボタンを探す
+                    const targetButtons = [];
+                    sections.forEach(sec => {
+                        const btns = Array.from(sec.querySelectorAll('button, div[role="button"]'));
+                        const addBtn = btns.find(b => {
+                            const text = b.innerText || b.textContent || '';
+                            const aria = b.getAttribute('aria-label') || '';
+                            return text.includes('+') || aria.includes('Add') || aria.includes('投稿') || b.className.includes('add');
+                        });
+                        if (addBtn) targetButtons.push(addBtn);
+                    });
+
+                    // もしセクション内ボタンが個別に見つからなければ、ページ全体の「+」ボタンを収集
+                    let finalBtns = targetButtons;
+                    if (finalBtns.length === 0) {
+                        finalBtns = Array.from(document.querySelectorAll('button')).filter(b => (b.innerText || '').includes('+'));
+                    }
+
+                    if (finalBtns.length > 0) {
+                        const target = finalBtns[(rIdx - 1) % finalBtns.length];
+                        target.click();
+                        return true;
+                    }
+                    return false;
+                }, round);
+
+                if (clicked) {
+                    console.log(`第 ${round} 回：セクション内の追加ボタンをクリックしました`);
                 } else {
-                    // セクションがない場合は全体追加ボタン
-                    console.log('セクションがないため全体の追加ボタンを使用します');
+                    console.log('セクションが見つからないため、全体の追加ボタンを使用します');
                     await page.evaluate(() => {
                         const buttons = Array.from(document.querySelectorAll('button'));
                         const target = buttons.find(b => (b.innerText || '').includes('Post') || (b.innerText || '').includes('投稿'));
                         if (target) target.click();
                     });
-                    await page.waitForTimeout(500);
                 }
+
+                await page.waitForTimeout(500);
 
                 // ==========================================
                 // テキスト入力・画像添付・Publish・Done

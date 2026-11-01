@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 // 📝 投稿用メッセージ
-const LONG_MESSAGE = process.env.CUSTOM_MESSAGE || ("おまえらやりませんねぇ杉！！さーもんの集いに参加 https://padlet.com/10451919uow/m ".repeat(40) + "\n（うおｗ）\n" + "あ".repeat(900));
+const LONG_MESSAGE = process.env.CUSTOM_MESSAGE || ("おまえらやりませんねぇ杉！！さーもんの集いに参加 https://padlet.com/gottanaka/m ".repeat(40) + "\n（うおｗ）\n" + "あ".repeat(900));
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 

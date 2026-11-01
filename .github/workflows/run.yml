@@ -26,3 +26,10 @@ jobs:
         env:
           PADLET_EMAIL: ${{ secrets.PADLET_EMAIL }}
           PADLET_PASSWORD: ${{ secrets.PADLET_PASSWORD }}
+
+      - name: スクリーンショットを保存（成果物としてアップロード）
+        uses: actions/upload-artifact@v4
+        if: always() # エラーで止まっても必ずスクショを保存する
+        with:
+          name: login-page-screenshot
+          path: login-page.png

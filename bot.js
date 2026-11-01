@@ -45,6 +45,16 @@ async function main() {
             await submitButton.click();
         }
         
+        // ログイン後のURLや画面遷移のチェック
+        await page.waitForTimeout(5000);
+        const currentUrl = page.url();
+        console.log('現在のURL:', currentUrl);
+
+        if (currentUrl.includes('verify-login-email-address')) {
+            console.log('⚠️ メール認証画面が検知されました。');
+            throw new Error('Padlet側でメール認証（セキュリティ確認）が要求されたため中断しました。');
+        }
+
         await page.waitForURL('**/dashboard**', { timeout: 30000 });
         console.log('ダッシュボードにログインしました！');
 

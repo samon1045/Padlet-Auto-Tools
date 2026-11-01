@@ -3,7 +3,7 @@ name: Padlet Playwright Bot
 on:
   workflow_dispatch: # GitHubの画面から手動でボタンをポチッと押して動かせるようにする設定
   schedule:
-    - cron: '0 23 * * *' # 毎日決まった時間に自動で動かしたい場合（必要なら設定）
+    - cron: '' # 毎日決まった時間に自動で動かしたい場合（必要なら設定）
 
 jobs:
   run-automation:

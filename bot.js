@@ -7,12 +7,10 @@ const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
 async function main() {
-    // GitHub Secretsから渡された認証情報（JSON）がある場合はファイルに書き出す
     if (process.env.AUTH_JSON) {
         fs.writeFileSync('auth.json', process.env.AUTH_JSON);
     }
 
-    // 保存されたセッション（cookie）があれば読み込んでブラウザを起動
     const hasStorageState = fs.existsSync('auth.json');
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext(
@@ -25,7 +23,6 @@ async function main() {
         await page.goto('https://padlet.com/dashboard', { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(3000);
 
-        // もしログイン画面に飛ばされてしまった場合はセッション切れ
         if (page.url().includes('login') || page.url().includes('verify')) {
             throw new Error('セッションの有効期限が切れているか、ログインしていません。認証情報を更新してください。');
         }
@@ -38,62 +35,94 @@ async function main() {
 
         console.log(`指定されたボードを開いています: ${TARGET_BOARD_URL}`);
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(4000);
 
-        console.log('ボード内のセクションをスキャン中...');
-        
-        // ボード内にある各セクションの「＋（投稿追加）」ボタンを検出する
+        // ==========================================
+        // 1. 新規投稿（セクションごとの＋ボタン）の処理
+        // ==========================================
+        console.log('\n--- 【処理1】新規投稿の作成を開始 ---');
         const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add"], .section-add-button, [data-testid="add-post-button"]');
-        console.log(`見つかったセクション・追加ボタン数: ${addButtons.length}件`);
+        console.log(`見つかった新規追加ボタン数: ${addButtons.length}件`);
 
         let sectionIndex = 1;
         for (const addBtn of addButtons) {
             try {
-                console.log(`- セクション ${sectionIndex} にメッセージと画像を投稿中...`);
-                
-                // 1. 投稿追加ボタンをクリック
+                console.log(`- セクション ${sectionIndex} に新規投稿を作成中...`);
                 await addBtn.click();
                 await page.waitForTimeout(1000);
 
-                // 2. メッセージを入力
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
                 await editor.fill(MESSAGE_TO_POST);
                 await page.waitForTimeout(1000);
 
-                // 3. GIFファイルを添付してアップロード完了をしっかり待つ
                 const fileInput = await page.$('input[type="file"]');
                 if (fileInput) {
-                    console.log('GIF画像をアップロード中...');
+                    console.log('  -> GIF画像をアップロード中...');
                     await fileInput.setInputFiles(IMAGE_PATH);
-                    // アップロードとプレビュー表示が完了するまで待機
                     await page.waitForTimeout(5000); 
                 }
 
-                // 4. 投稿ボタンを確実に探してクリック
                 const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), button[data-testid="publish-button"]', { state: 'visible', timeout: 5000 });
                 if (publishBtn) {
                     await publishBtn.click();
                     console.log(`  -> セクション ${sectionIndex} の投稿ボタンを押しました！`);
-                    
-                    // 送信処理が反映されるのを少し待つ
-                    await page.waitForTimeout(5000);
-
-                    // 【デバッグチェック】入力用エディターが画面から消えたか（投稿が完了したか）確認
-                    const editorStillExists = await page.$('div[contenteditable="true"], textarea');
-                    if (editorStillExists) {
-                        console.log('  ⚠️ 投稿ボタンを押しましたが、エディターがまだ開いたままです（送信できていない可能性）');
-                    } else {
-                        console.log('  ✨ エディターが閉じました。投稿成功の可能性が高いです！');
-                    }
+                    await page.waitForTimeout(6000);
                 }
-
             } catch (secErr) {
-                console.log(`  -> セクション ${sectionIndex} への投稿スキップ:`, secErr.message);
+                console.log(`  -> セクション ${sectionIndex} への新規投稿スキップ:`, secErr.message);
+                // エラー時はモーダルが残っていれば閉じるためESC
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(1000);
             }
             sectionIndex++;
         }
 
-        console.log('\nすべてのセクションへの投稿処理が完了しました！');
+        // ==========================================
+        // 2. 既存の投稿へのコメント送信処理
+        // ==========================================
+        console.log('\n--- 【処理2】既存の投稿へのコメント送信を開始 ---');
+        const posts = await page.$$('.post, [data-testid="post"], article');
+        console.log(`見つかった既存の投稿数: ${posts.length}件`);
+
+        let postIndex = 1;
+        for (const post of posts) {
+            try {
+                console.log(`- 投稿 ${postIndex} のコメント欄に送信中...`);
+                await post.click();
+                await page.waitForTimeout(1500);
+
+                const commentInput = await page.waitForSelector('textarea[placeholder*="コメント"], div[contenteditable="true"][data-placeholder*="コメント"], textarea, div[contenteditable="true"]', { timeout: 5000 });
+                if (commentInput) {
+                    await commentInput.fill(MESSAGE_TO_POST);
+                    await page.waitForTimeout(1000);
+
+                    const fileInput = await page.$('input[type="file"]');
+                    if (fileInput) {
+                        console.log('  -> コメントにGIF画像を添付中...');
+                        await fileInput.setInputFiles(IMAGE_PATH);
+                        await page.waitForTimeout(4000);
+                    }
+
+                    const submitCommentBtn = await page.$('button:has-text("Publish"), button:has-text("コメント"), button[data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]');
+                    if (submitCommentBtn) {
+                        await submitCommentBtn.click();
+                        console.log(`  -> 投稿 ${postIndex} へのコメント送信完了！`);
+                        await page.waitForTimeout(5000);
+                    }
+                }
+
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(1000);
+
+            } catch (err) {
+                console.log(`  -> 投稿 ${postIndex} へのコメント送信スキップ:`, err.message);
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(1000);
+            }
+            postIndex++;
+        }
+
+        console.log('\n🎉 すべての自動投稿・コメント送信処理が完了しました！');
 
     } catch (error) {
         console.error('エラーが発生しました:', error);

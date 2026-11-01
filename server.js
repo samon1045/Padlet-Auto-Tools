@@ -2,11 +2,9 @@ const express = require('express');
 const axios = require('axios');
 const app = express();
 
-// JSONやフォームデータの受け取り設定
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 1. ブラウザでアクセスしたときに表示する入力ページ（HTML）
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -140,7 +138,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// 2. フォームから受け取ったデータをPadlet APIに送るバックエンド処理
 app.post('/api/post', async (req, res) => {
     const { token, boardId, message } = req.body;
 
@@ -168,7 +165,6 @@ app.post('/api/post', async (req, res) => {
     }
 });
 
-// サーバー起動
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`サーバーが起動しました: http://localhost:${PORT}`);

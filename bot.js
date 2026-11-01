@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const MESSAGE_TO_POST = process.env.CUSTOM_MESSAGE || "おまえらやりませんねぇ杉！！";
-const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif'); // 拡張子をgifに修正
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
 async function main() {
@@ -69,13 +69,14 @@ async function main() {
                     await page.waitForTimeout(5000); 
                 }
 
-                // 4. 投稿（Publish / 投稿）ボタンを確実に探してクリック
+                // 4. 投稿ボタンを確実に探してクリック
                 const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), button[data-testid="publish-button"]', { state: 'visible', timeout: 5000 });
                 if (publishBtn) {
                     await publishBtn.click();
                     console.log(`  -> セクション ${sectionIndex} の投稿ボタンを押しました！`);
-                    // 送信処理が完了するまで待機
-                    await page.waitForTimeout(4000);
+                    
+                    // 送信・保存処理がボードに完全に反映されるまでしっかり待機（7秒）
+                    await page.waitForTimeout(7000);
                 }
 
             } catch (secErr) {

@@ -1,0 +1,13 @@
+{
+  "name": "padlet-auto-tools",
+  "version": "1.0.0",
+  "description": "Padlet automation tool",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.19.2"
+  }
+}

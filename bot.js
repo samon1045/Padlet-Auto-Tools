@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const MESSAGE_TO_POST = process.env.CUSTOM_MESSAGE || "おまえらやりませんねぇ杉！！";
-const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).png');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
 async function main() {
@@ -58,22 +58,26 @@ async function main() {
                 // 2. メッセージを入力
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
                 await editor.fill(MESSAGE_TO_POST);
+                await page.waitForTimeout(1000);
 
-                // 3. 画像ファイルを添付
+                // 3. 画像ファイルを添付してアップロード完了をしっかり待つ
                 const fileInput = await page.$('input[type="file"]');
                 if (fileInput) {
+                    console.log('画像をアップロード中...');
                     await fileInput.setInputFiles(IMAGE_PATH);
-                    await page.waitForTimeout(2000);
+                    // 画像のアップロードとプレビュー表示が完了するまで待機
+                    await page.waitForTimeout(5000); 
                 }
 
-                // 4. 投稿（Publish）ボタンをクリック
-                const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button[data-testid="publish-button"]');
+                // 4. 投稿（Publish / 投稿）ボタンを確実に探してクリック
+                const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), button[data-testid="publish-button"]', { state: 'visible', timeout: 5000 });
                 if (publishBtn) {
                     await publishBtn.click();
-                    console.log(`  -> セクション ${sectionIndex} への投稿完了！`);
+                    console.log(`  -> セクション ${sectionIndex} の投稿ボタンを押しました！`);
+                    // 送信処理が完了するまで待機
+                    await page.waitForTimeout(4000);
                 }
 
-                await page.waitForTimeout(2000);
             } catch (secErr) {
                 console.log(`  -> セクション ${sectionIndex} への投稿スキップ:`, secErr.message);
             }

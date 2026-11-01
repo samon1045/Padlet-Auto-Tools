@@ -14,10 +14,14 @@ async function main() {
         console.log('Padletにログイン中...');
         await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
 
-        // ★画面がどうなっているか確認するためにスクリーンショットを保存する
+        // 画面上のすべての input タグの情報をログに出力する
+        const inputInfo = await page.$$eval('input', inputs => 
+            inputs.map(i => ({ type: i.type, name: i.name, id: i.id, placeholder: i.placeholder }))
+        );
+        console.log('【ページ内の入力欄一覧】', JSON.stringify(inputInfo, null, 2));
+
         await page.screenshot({ path: 'login-page.png', fullPage: true });
         console.log('ログイン画面のスクリーンショットを保存しました。');
-
         await page.fill('input[name="email"], input[type="email"]', process.env.PADLET_EMAIL);
         await page.fill('input[name="password"], input[type="password"]', process.env.PADLET_PASSWORD);
         await page.click('button[type="submit"]');

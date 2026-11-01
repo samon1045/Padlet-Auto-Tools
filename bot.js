@@ -11,21 +11,18 @@ async function main() {
     const page = await context.newPage();
 
     try {
-console.log('Padletにログイン中...');
+        console.log('Padletにログイン中...');
         await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
 
-        // ★いま実際に開いているURLをログに出力する
-        console.log('現在のURL:', page.url());
+        // もしプロフィールページなどに飛ばされていて「Log in」ボタンがある場合はクリックする
+        const loginButton = await page.$('a[href*="/login"], button:has-text("Log in")');
+        if (loginButton) {
+            console.log('「Log in」ボタンを見つけたのでクリックします');
+            await loginButton.click();
+            await page.waitForTimeout(2000);
+        }
 
-        // 画面上のすべての input タグの情報をログに出力する
-        const inputInfo = await page.$$eval('input', inputs => 
-            inputs.map(i => ({ type: i.type, name: i.name, id: i.id, placeholder: i.placeholder }))
-        );
-        console.log('【ページ内の入力欄一覧】', JSON.stringify(inputInfo, null, 2));
-
-        await page.screenshot({ path: 'login-page.png', fullPage: true });
-        console.log('ログイン画面のスクリーンショットを保存しました。');
-        
+        await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
         await page.fill('input[name="email"], input[type="email"]', process.env.PADLET_EMAIL);
         await page.fill('input[name="password"], input[type="password"]', process.env.PADLET_PASSWORD);
         await page.click('button[type="submit"]');

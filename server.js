@@ -11,7 +11,7 @@ app.get('/', (req, res) => {
         <html lang="ja">
         <head>
             <meta charset="UTF-8">
-            <title>Padlet 自動投稿ツール</title>
+            <title>Padlet 一括自動投稿ツール</title>
             <style>
                 body {
                     background-color: #121212;
@@ -27,7 +27,7 @@ app.get('/', (req, res) => {
                     background: #1e1e1e;
                     padding: 30px;
                     border-radius: 8px;
-                    width: 400px;
+                    width: 420px;
                     border: 1px solid #333;
                     box-shadow: 0 4px 20px rgba(0,0,0,0.7);
                 }
@@ -85,18 +85,18 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="card">
-                <h2>Padlet Post Tool</h2>
+                <h2>Padlet Batch Post Tool</h2>
                 <form id="postForm">
                     <label>APIトークン (Bearer Token)</label>
                     <input type="password" id="token" required placeholder="パドレットのトークンを入力">
                     
-                    <label>ボード ID</label>
-                    <input type="text" id="boardId" required placeholder="例: abc123xyz">
-                    
                     <label>メッセージ</label>
-                    <textarea id="message" rows="4" required placeholder="おはよう！"></textarea>
+                    <textarea id="message" rows="3" required placeholder="おはよう！"></textarea>
                     
-                    <button type="submit">投稿する</button>
+                    <label>添付する画像のURL（任意）</label>
+                    <input type="text" id="imageUrl" placeholder="https://example.com/image.png">
+                    
+                    <button type="submit">全ボードに一括送信する</button>
                 </form>
                 <div id="result"></div>
             </div>
@@ -105,24 +105,24 @@ app.get('/', (req, res) => {
                 document.getElementById('postForm').addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const token = document.getElementById('token').value;
-                    const boardId = document.getElementById('boardId').value;
                     const message = document.getElementById('message').value;
+                    const imageUrl = document.getElementById('imageUrl').value;
                     const resultDiv = document.getElementById('result');
 
                     resultDiv.style.color = '#e0e0e0';
-                    resultDiv.innerText = '送信中...';
+                    resultDiv.innerText = '全ボードを取得して送信中...';
 
                     try {
-                        const response = await fetch('/api/post', {
+                        const response = await fetch('/api/batch-post', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ token, boardId, message })
+                            body: JSON.stringify({ token, message, imageUrl })
                         });
                         const data = await response.json();
                         
                         if (response.ok) {
                             resultDiv.style.color = '#81c784';
-                            resultDiv.innerText = '✅ 投稿に成功しました！';
+                            resultDiv.innerText = '✅ ' + data.message;
                         } else {
                             resultDiv.style.color = '#e57373';
                             resultDiv.innerText = '❌ エラー: ' + (data.error || '失敗しました');
@@ -138,24 +138,47 @@ app.get('/', (req, res) => {
     `);
 });
 
-app.post('/api/post', async (req, res) => {
-    const { token, boardId, message } = req.body;
+app.post('/api/batch-post', async (req, res) => {
+    const { token, message, imageUrl } = req.body;
 
     try {
-        const response = await axios.post(`https://api.padlet.com/v1/boards/${boardId}/posts`, {
-            data: {
-                attributes: {
-                    body: message
-                }
-            }
-        }, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+        const boardsRes = await axios.get('https://api.padlet.com/v1/boards', {
+            headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        res.json({ success: true, data: response.data });
+        const boards = boardsRes.data.data || boardsRes.data;
+        if (!boards || boards.length === 0) {
+            return res.status(400).json({ success: false, error: 'アクセスできるボードが見つかりませんでした' });
+        }
+
+        let successCount = 0;
+
+        for (const board of boards) {
+            const boardId = board.id;
+            
+            const postData = {
+                data: {
+                    attributes: {
+                        body: message,
+                        ...(imageUrl ? { attachment: imageUrl } : {})
+                    }
+                }
+            };
+
+            try {
+                await axios.post(`https://api.padlet.com/v1/boards/${boardId}/posts`, postData, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                successCount++;
+            } catch (err) {
+                console.error(`ボード ${boardId} への投稿失敗:`, err.message);
+            }
+        }
+
+        res.json({ success: true, message: `${successCount}個のボードへ一括送信が完了しました！` });
     } catch (error) {
         console.error(error.response?.data || error.message);
         res.status(500).json({ 

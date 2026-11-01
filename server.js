@@ -8,7 +8,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Web画面からの投稿リクエストを受け取るAPI
 app.post('/api/run', async (req, res) => {
     const { targetUrl, message } = req.body;
 
@@ -19,7 +18,6 @@ app.post('/api/run', async (req, res) => {
     console.log(`\n[リクエスト受信] ターゲットURL: ${targetUrl}`);
     console.log(`メッセージ: ${message || 'デフォルトメッセージを使用'}`);
 
-    // バックグラウンドでボットを実行
     res.json({ success: true, message: 'ボットの実行を開始しました！ターミナルやログを確認してください。' });
 
     try {

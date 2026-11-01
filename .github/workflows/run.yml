@@ -34,7 +34,6 @@ jobs:
       - name: ボットの実行
         run: node bot.js
         env:
-          PADLET_EMAIL: ${{ secrets.PADLET_EMAIL }}
-          PADLET_PASSWORD: ${{ secrets.PADLET_PASSWORD }}
+          AUTH_JSON: ${{ secrets.AUTH_JSON }}
           TARGET_URL: ${{ inputs.target_url }}
           CUSTOM_MESSAGE: ${{ inputs.message }}

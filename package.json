@@ -1,13 +1,12 @@
 {
   "name": "padlet-auto-tools",
   "version": "1.0.0",
-  "description": "Padlet automation tool",
-  "main": "server.js",
+  "description": "Padlet automation with Playwright",
+  "main": "bot.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node bot.js"
   },
   "dependencies": {
-    "axios": "^1.6.0",
-    "express": "^4.19.2"
+    "playwright": "^1.42.0"
   }
 }

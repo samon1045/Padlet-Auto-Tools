@@ -75,8 +75,16 @@ async function main() {
                     await publishBtn.click();
                     console.log(`  -> セクション ${sectionIndex} の投稿ボタンを押しました！`);
                     
-                    // 送信・保存処理がボードに完全に反映されるまでしっかり待機（7秒）
-                    await page.waitForTimeout(7000);
+                    // 送信処理が反映されるのを少し待つ
+                    await page.waitForTimeout(5000);
+
+                    // 【デバッグチェック】入力用エディターが画面から消えたか（投稿が完了したか）確認
+                    const editorStillExists = await page.$('div[contenteditable="true"], textarea');
+                    if (editorStillExists) {
+                        console.log('  ⚠️ 投稿ボタンを押しましたが、エディターがまだ開いたままです（送信できていない可能性）');
+                    } else {
+                        console.log('  ✨ エディターが閉じました。投稿成功の可能性が高いです！');
+                    }
                 }
 
             } catch (secErr) {
@@ -85,7 +93,7 @@ async function main() {
             sectionIndex++;
         }
 
-        console.log('\nすべてのセクションへの投稿が完了しました！');
+        console.log('\nすべてのセクションへの投稿処理が完了しました！');
 
     } catch (error) {
         console.error('エラーが発生しました:', error);

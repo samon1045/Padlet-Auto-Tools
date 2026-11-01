@@ -49,7 +49,6 @@ async function main() {
             try {
                 console.log(`- セクション ${sectionIndex} に新規投稿を作成中...`);
                 
-                // もし邪魔なポップアップ（ゲスト名入力など）が出ていたらESCで閉じる
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
@@ -69,24 +68,27 @@ async function main() {
 
                 const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), button[data-testid="publish-button"]', { state: 'visible', timeout: 5000 });
                 if (publishBtn) {
-                    // 📸 【デバッグ】投稿ボタンを押す「直前」のスクリーンショットを保存
-                    await page.screenshot({ path: `screenshot-section${sectionIndex}-before.png` });
-                    console.log(`  📸 投稿ボタン押下前のスクリーンショットを保存しました (screenshot-section${sectionIndex}-before.png)`);
-
                     await publishBtn.click();
                     console.log(`  -> セクション ${sectionIndex} の投稿ボタンを押しました！`);
                     
+                    await page.waitForTimeout(2000);
+
+                    // 🔍 【重要】「What should we call you?」ポップアップが出たら「Done」をクリックして閉じる
+                    try {
+                        const doneBtn = await page.waitForSelector('button:has-text("Done"), [data-testid="guest-done-button"]', { timeout: 4000 });
+                        if (doneBtn) {
+                            console.log('  -> 名前入力ポップアップを検知しました。「Done」をクリックします。');
+                            await doneBtn.click();
+                            await page.waitForTimeout(2000);
+                        }
+                    } catch (e) {
+                        // ポップアップが出なかった場合はそのままスルー
+                    }
+
                     await page.waitForTimeout(3000);
-
-                    // 📸 【デバッグ】投稿ボタンを押した「直後」のスクリーンショットを保存
-                    await page.screenshot({ path: `screenshot-section${sectionIndex}-after.png` });
-                    console.log(`  📸 投稿ボタン押下後のスクリーンショットを保存しました (screenshot-section${sectionIndex}-after.png)`);
-
-                    await page.waitForTimeout(4000);
                 }
             } catch (secErr) {
-                console.log(`  -> セクション ${sectionIndex} への新規投稿スキップ:`, secErr.message);
-                // エラー時の画面も残すためにスクリーンショットを保存
+                console.log(`  -> セクション ${secErr.message}`);
                 await page.screenshot({ path: `screenshot-section${sectionIndex}-error.png` });
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(1000);

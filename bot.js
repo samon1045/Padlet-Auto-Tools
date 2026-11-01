@@ -22,7 +22,7 @@ async function main() {
         console.log('ダッシュボードにログインしました！');
 
         for (let i = 0; i < REPEAT_COUNT; i++) {
-            console.log(`\n--- ${i + 1回目の実行開始 ---`);
+            console.log(`\n--- ${i + 1}回目の実行開始 ---`);
 
             await page.goto('https://padlet.com/dashboard', { waitUntil: 'domcontentloaded' });
             

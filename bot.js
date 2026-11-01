@@ -41,19 +41,36 @@ async function main() {
             await page.waitForTimeout(300);
 
             // ==========================================
-            // セクションがあるかチェックし、セクションごとの追加ボタンを取得
+            // セクションがあるかチェックし、各セクションの追加ボタンを取得
             // ==========================================
-            let addButtons = await page.$$('.section-add-button, button[aria-label*="セクションに投稿"], button[aria-label*="Add post to section"], [data-testid="section-add-post-button"]');
+            // セクション内にある「+」ボタンや追加ボタンのセレクタを網羅
+            let sectionAddButtons = await page.$$(
+                '.section-add-button, ' +
+                'button[aria-label*="セクションに投稿"], ' +
+                'button[aria-label*="Add post to section"], ' +
+                '[data-testid="section-add-post-button"], ' +
+                'section button[aria-label*="Add"], ' +
+                'div[data-section-id] button[aria-label*="Add"], ' +
+                'div[data-section-id] button'
+            );
 
-            if (addButtons.length > 0) {
-                // セクションがある場合：ラウンドごとにセクションを巡回（ループ回数がセクション数より多い場合はインデックスを循環）
-                const btnIndex = (round - 1) % addButtons.length;
-                console.log(`セクションを検出しました（全 ${addButtons.length} 個中、今回は ${btnIndex + 1} 番目のセクションへ投稿）`);
+            if (sectionAddButtons.length > 0) {
+                // セクションがある場合：ラウンドごとに順番にセクションを巡回して投稿
+                const btnIndex = (round - 1) % sectionAddButtons.length;
+                console.log(`セクションを検出しました（全 ${sectionAddButtons.length} 個中、今回は ${btnIndex + 1} 番目のセクションに追加します）`);
                 
-                await addButtons[btnIndex].click();
+                try {
+                    await sectionAddButtons[btnIndex].click();
+                } catch (e) {
+                    // うまくクリックできない場合はJavaScript経由でクリック
+                    await page.evaluate((idx) => {
+                        const sBtns = Array.from(document.querySelectorAll('.section-add-button, [data-testid="section-add-post-button"], section button, div[data-section-id] button'));
+                        if (sBtns[idx]) sBtns[idx].click();
+                    }, btnIndex);
+                }
                 await page.waitForTimeout(800);
             } else {
-                // セクションがない場合：画面右下の全体追加ボタン（+ Post）をクリック
+                // セクションがない場合：画面右下の全体追加ボタン（+ Post）を使用
                 console.log('セクションがない部屋のため、全体の追加ボタンを使用します');
                 
                 let clicked = await page.evaluate(() => {

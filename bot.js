@@ -30,18 +30,17 @@ async function main() {
         }
 
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(2000);
 
-        // 1. セクションの追加ボタンを取得
+        // 🔍 各セクションの一番下にある「+」または「投稿を追加」ボタンだけに絞り込む
         let sectionAddButtons = await page.$$(
-            '.section-add-button, ' +
+            'button.section-add-button, ' +
             'button[aria-label*="セクションに投稿"], ' +
             'button[aria-label*="Add post to section"], ' +
-            '[data-testid="section-add-post-button"], ' +
-            'section button[aria-label*="Add"]'
+            '[data-testid="section-add-post-button"]'
         );
 
-        console.log(`検出されたセクション追加ボタン数: ${sectionAddButtons.length} 個`);
+        console.log(`正確に検出されたセクション追加ボタン数: ${sectionAddButtons.length} 個`);
 
         const TOTAL_ROUNDS = 15; 
 
@@ -49,91 +48,75 @@ async function main() {
             console.log(`\n⚡ 【超爆速ラウンド ${round}回目】開始`);
 
             try {
+                // 余計なポップアップを閉じるためEscを数回
                 await page.keyboard.press('Escape');
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(200);
 
                 if (sectionAddButtons.length > 0) {
-                    // ==========================================
-                    // パターンA: セクションがある場合は通常通り新規投稿
-                    // ==========================================
                     const btnIndex = (round - 1) % sectionAddButtons.length;
+                    console.log(`今回は ${btnIndex + 1} 番目のセクション追加ボタンをクリックします`);
+                    
                     await sectionAddButtons[btnIndex].click();
-                    await page.waitForTimeout(300);
+                    await page.waitForTimeout(500);
+                } else {
+                    // セクションがない場合は画面下の全体追加ボタン
+                    await page.evaluate(() => {
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const target = buttons.find(b => (b.innerText || '').includes('Post') || (b.innerText || '').includes('投稿'));
+                        if (target) target.click();
+                    });
+                    await page.waitForTimeout(500);
+                }
 
-                    const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 });
-                    if (editor) {
-                        await editor.fill(LONG_MESSAGE);
-                        await page.waitForTimeout(100);
+                // ==========================================
+                // テキスト入力・画像添付・Publish・Done
+                // ==========================================
+                const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 });
+                if (editor) {
+                    await editor.fill(LONG_MESSAGE);
+                    await page.waitForTimeout(200);
 
-                        if (fs.existsSync(IMAGE_PATH)) {
-                            const fileInput = await page.$('input[type="file"]');
-                            if (fileInput) {
-                                await fileInput.setInputFiles(IMAGE_PATH);
-                                await page.waitForTimeout(600);
-                            }
-                        }
-
-                        const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]', { state: 'visible', timeout: 2000 });
-                        if (publishBtn) {
-                            await publishBtn.click();
-                            await page.waitForTimeout(300);
-
-                            try {
-                                const doneBtn = await page.waitForSelector('button:has-text("Done"), button:has-text("完了"), [data-testid="guest-done-button"]', { timeout: 1000 });
-                                if (doneBtn) {
-                                    await doneBtn.click();
-                                    await page.waitForTimeout(200);
-                                }
-                            } catch (e) {}
-
-                            console.log(`第 ${round} 回のセクション投稿が完了しました！`);
+                    // 画像添付
+                    if (fs.existsSync(IMAGE_PATH)) {
+                        const fileInput = await page.$('input[type="file"]');
+                        if (fileInput) {
+                            await fileInput.setInputFiles(IMAGE_PATH);
+                            await page.waitForTimeout(800);
                         }
                     }
-                } else {
-                    // ==========================================
-                    // パターンB: セクション・新規投稿不可の部屋 → 既存の投稿にコメント/画像爆撃
-                    // ==========================================
-                    console.log('新規投稿エリアがないため、既存の投稿（コメント）へアタックします');
-                    
-                    const posts = await page.$$('.post, [data-testid="post"], article, div[class*="post"]');
-                    if (posts.length > 0) {
-                        // ラウンドに応じて既存の投稿をターゲットにする
-                        const targetPost = posts[(round - 1) % posts.length];
-                        await targetPost.click();
-                        await page.waitForTimeout(400);
 
-                        // コメント入力欄を探す
-                        const commentInput = await page.waitForSelector('textarea[placeholder*="コメント"], div[contenteditable="true"][data-placeholder*="コメント"], textarea, div[contenteditable="true"]', { timeout: 2000 });
-                        if (commentInput) {
-                            await commentInput.fill(LONG_MESSAGE);
-                            await page.waitForTimeout(200);
+                    // 投稿（Publish）
+                    const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]', { state: 'visible', timeout: 3000 });
+                    if (publishBtn) {
+                        await publishBtn.click();
+                        await page.waitForTimeout(500);
 
-                            if (fs.existsSync(IMAGE_PATH)) {
-                                const fileInput = await page.$('input[type="file"]');
-                                if (fileInput) {
-                                    await fileInput.setInputFiles(IMAGE_PATH);
-                                    await page.waitForTimeout(600);
-                                }
+                        // 名前入力ポップアップの「Done」自動処理
+                        try {
+                            const doneBtn = await page.waitForSelector('button:has-text("Done"), button:has-text("完了"), [data-testid="guest-done-button"]', { timeout: 1500 });
+                            if (doneBtn) {
+                                await doneBtn.click();
+                                await page.waitForTimeout(300);
                             }
-
-                            // コメント送信ボタン
-                            const submitBtn = await page.$('button:has-text("Publish"), button:has-text("コメント"), button[data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]');
-                            if (submitBtn) {
-                                await submitBtn.click();
-                                await page.waitForTimeout(500);
-                            }
+                        } catch (e) {
+                            await page.evaluate(() => {
+                                const btns = Array.from(document.querySelectorAll('button'));
+                                const dBtn = btns.find(b => (b.innerText || '').includes('Done') || (b.innerText || '').includes('完了'));
+                                if (dBtn) dBtn.click();
+                            });
                         }
-                        console.log(`第 ${round} 回の既存投稿へのコメント爆撃が完了しました！`);
-                    } else {
-                        console.log('既存の投稿も見つからなかったためスキップします。');
+
+                        console.log(`第 ${round} 回の投稿が完全に完了しました！`);
                     }
                 }
             } catch (err) {
-                console.log(`第 ${round} 回目で軽微なスキップが発生しました。次へ進みます。`);
+                console.log(`第 ${round} 回目でスキップが発生しました。次へ進みます。`);
                 await page.keyboard.press('Escape');
             }
         }
 
-        console.log('\n🎉 全ての超爆速処理が完了しました！');
+        console.log('\n🎉 全ての処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
 
     } catch (error) {

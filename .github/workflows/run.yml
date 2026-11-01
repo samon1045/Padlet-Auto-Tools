@@ -2,6 +2,16 @@ name: Padlet Playwright Bot
 
 on:
   workflow_dispatch:
+    inputs:
+      target_url:
+        description: '投稿先のPadletの部屋のURL'
+        required: true
+        type: string
+      message:
+        description: '送信するメッセージ'
+        required: false
+        default: 'おまえらやりませんねぇ杉！！'
+        type: string
 
 jobs:
   run-automation:
@@ -26,10 +36,5 @@ jobs:
         env:
           PADLET_EMAIL: ${{ secrets.PADLET_EMAIL }}
           PADLET_PASSWORD: ${{ secrets.PADLET_PASSWORD }}
-
-      - name: スクリーンショットを保存（成果物としてアップロード）
-        uses: actions/upload-artifact@v4
-        if: always() # エラーで止まっても必ずスクショを保存する
-        with:
-          name: login-page-screenshot
-          path: login-page.png
+          TARGET_URL: ${{ inputs.target_url }}
+          CUSTOM_MESSAGE: ${{ inputs.message }}

@@ -40,37 +40,49 @@ async function main() {
             await page.keyboard.press('Escape');
             await page.waitForTimeout(300);
 
-            // 1. 新規投稿ボタン（+ Post）の検出とクリック
-            let clicked = false;
+            // ==========================================
+            // セクションがあるかチェックし、セクションごとの追加ボタンを取得
+            // ==========================================
+            let addButtons = await page.$$('.section-add-button, button[aria-label*="セクションに投稿"], button[aria-label*="Add post to section"], [data-testid="section-add-post-button"]');
 
-            clicked = await page.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
-                const target = buttons.find(b => {
-                    const text = b.innerText || b.textContent || '';
-                    return text.includes('Post') || text.includes('投稿') || text.includes('+');
+            if (addButtons.length > 0) {
+                // セクションがある場合：ラウンドごとにセクションを巡回（ループ回数がセクション数より多い場合はインデックスを循環）
+                const btnIndex = (round - 1) % addButtons.length;
+                console.log(`セクションを検出しました（全 ${addButtons.length} 個中、今回は ${btnIndex + 1} 番目のセクションへ投稿）`);
+                
+                await addButtons[btnIndex].click();
+                await page.waitForTimeout(800);
+            } else {
+                // セクションがない場合：画面右下の全体追加ボタン（+ Post）をクリック
+                console.log('セクションがない部屋のため、全体の追加ボタンを使用します');
+                
+                let clicked = await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
+                    const target = buttons.find(b => {
+                        const text = b.innerText || b.textContent || '';
+                        return text.includes('Post') || text.includes('投稿') || text.includes('+');
+                    });
+                    if (target) {
+                        target.click();
+                        return true;
+                    }
+                    return false;
                 });
-                if (target) {
-                    target.click();
-                    return true;
-                }
-                return false;
-            });
 
-            if (!clicked) {
-                const addBtn = await page.$('button:has-text("Post"), button:has-text("投稿"), [data-testid="add-post-button"], .section-add-button');
-                if (addBtn) {
-                    await addBtn.click();
-                    clicked = true;
+                if (!clicked) {
+                    const addBtn = await page.$('button:has-text("Post"), button:has-text("投稿"), [data-testid="add-post-button"]');
+                    if (addBtn) {
+                        await addBtn.click();
+                    } else {
+                        await page.keyboard.press('n');
+                    }
                 }
+                await page.waitForTimeout(1000);
             }
 
-            if (!clicked) {
-                await page.keyboard.press('n');
-            }
-
-            await page.waitForTimeout(1000);
-
-            // 2. テキスト入力と投稿
+            // ==========================================
+            // テキスト入力・画像添付・投稿・Done処理
+            // ==========================================
             try {
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea, input[type="text"]', { timeout: 3000 });
                 if (editor) {
@@ -92,7 +104,7 @@ async function main() {
                         await publishBtn.click();
                         await page.waitForTimeout(1000);
 
-                        // 3. 投稿後の「Done」ポップアップの確実な自動処理
+                        // 名前入力ポップアップの「Done」自動処理
                         try {
                             const doneBtn = await page.waitForSelector('button:has-text("Done"), button:has-text("完了"), [data-testid="guest-done-button"]', { timeout: 3000 });
                             if (doneBtn) {
@@ -100,7 +112,6 @@ async function main() {
                                 await page.waitForTimeout(800);
                             }
                         } catch (e) {
-                            // DOMから直接Doneボタンを探してクリック
                             await page.evaluate(() => {
                                 const btns = Array.from(document.querySelectorAll('button'));
                                 const dBtn = btns.find(b => b.innerText.includes('Done') || b.innerText.includes('完了'));
@@ -108,7 +119,7 @@ async function main() {
                             });
                         }
 
-                        console.log(`第 ${round} 回の投稿が完全に完了しました！`);
+                        console.log(`第 ${round} 回の投稿が完了しました！`);
                         await page.waitForTimeout(1000);
                     }
                 }

@@ -137,7 +137,7 @@ async function main() {
                     const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                     const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                     if (nameInput && doneBtn && await nameInput.isVisible()) {
-                        await nameInput.fill('さーもん bot');
+                        await nameInput.fill('さーもん万歳！！');
                         await doneBtn.click({ force: true });
                         await page.waitForTimeout(500);
                     }

@@ -9,11 +9,11 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// 画面上の余計なモーダルや拡大ビューを徹底적으로閉じるヘルパー
-async function dismissOverlays(page) {
-    for (let i = 0; i < 3; i++) {
+// 画面上に残ったポップアップや詳細ビューをEscape連打で完全に排除する
+async function dismissAllModals(page) {
+    for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(250);
     }
 }
 
@@ -61,7 +61,7 @@ async function main() {
 
         for (let i = 0; i < addButtons.length; i++) {
             try {
-                await dismissOverlays(page);
+                await dismissAllModals(page);
                 console.log(`\n📍 [セクション ${i + 1} / ${addButtons.length}] に校則の新規投稿を作成中...`);
                 
                 const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -113,7 +113,6 @@ async function main() {
                 console.log('  🚀 校則の新規投稿を公開しました！');
                 await page.waitForTimeout(2500);
 
-                // アクションごとのスクリーンショット保存
                 await page.screenshot({ path: `screenshot-topic-sec${i + 1}.png`, fullPage: true });
 
                 // ゲスト名入力を求めるポップアップへの自動対応
@@ -129,12 +128,12 @@ async function main() {
                 console.log(`⚠️ セクション ${i + 1} の新規投稿作成中にエラー:`, err.message);
                 await page.screenshot({ path: `screenshot-error-sec${i + 1}.png`, fullPage: true });
             } finally {
-                await dismissOverlays(page);
+                await dismissAllModals(page);
             }
         }
 
         // ==========================================
-        // 2. コメント巡回（アクションごとのスクリーンショット付き）
+        // 2. コメント巡回（拡大ビュー・オーバーレイを完全に毎回排除）
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -146,7 +145,7 @@ async function main() {
             let processedCount = 0;
 
             while (true) {
-                await dismissOverlays(page);
+                await dismissAllModals(page);
 
                 const commentSelectors = [
                     'button:has-text("Add comment")',
@@ -176,9 +175,11 @@ async function main() {
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
 
+                    // force: trueで確実にクリック
                     await targetBtn.click({ force: true });
                     await page.waitForTimeout(1500);
 
+                    // もしカードの詳細拡大画面が開いてしまったら、一度Escapeを押して中身のコメント欄を出すか、入力欄を探す
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
                         editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
@@ -206,7 +207,6 @@ async function main() {
                         console.log('  🚀 コメントを送信しました！');
                         await page.waitForTimeout(3000);
 
-                        // アクションごとのスクリーンショット保存
                         await page.screenshot({ path: `screenshot-r${round}-card${processedCount + 1}.png`, fullPage: true });
 
                         // ゲスト名入力を求めるポップアップへの自動対応
@@ -228,7 +228,7 @@ async function main() {
                     await page.screenshot({ path: `screenshot-error-r${round}-card${processedCount + 1}.png`, fullPage: true });
                     processedCount++;
                 } finally {
-                    await dismissOverlays(page);
+                    await dismissAllModals(page);
                 }
             }
         }

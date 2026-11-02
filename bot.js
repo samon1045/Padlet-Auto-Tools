@@ -9,11 +9,11 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// モーダルや残ったオーバーレイを強制的に閉じるヘルパー関数
-async function clearModals(page) {
+// 画面上の余計なモーダルや拡大ビューを徹底的に閉じるヘルパー
+async function dismissOverlays(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
     }
 }
 
@@ -60,7 +60,7 @@ async function main() {
 
         for (let i = 0; i < addButtons.length; i++) {
             try {
-                await clearModals(page);
+                await dismissOverlays(page);
                 console.log(`\n📍 [セクション ${i + 1} / ${addButtons.length}] に校則の新規投稿を作成中...`);
                 
                 const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -124,12 +124,12 @@ async function main() {
             } catch (err) {
                 console.log(`⚠️ セクション ${i + 1} の新規投稿作成中にエラー:`, err.message);
             } finally {
-                await clearModals(page);
+                await dismissOverlays(page);
             }
         }
 
         // ==========================================
-        // 2. コメント巡回（オーバーレイ強制リセット付き）
+        // 2. コメント巡回（詳細拡大ビューの干渉を完全ブロック）
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -141,7 +141,7 @@ async function main() {
             let processedCount = 0;
 
             while (true) {
-                await clearModals(page);
+                await dismissOverlays(page);
 
                 const commentSelectors = [
                     'button:has-text("Add comment")',
@@ -171,11 +171,17 @@ async function main() {
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
 
-                    // force: true でオーバーレイがあっても強力にクリック
+                    // 誤ってカードの拡大ビューが開かないよう、ボタンピンポイントでクリック
                     await targetBtn.click({ force: true });
-                    await page.waitForTimeout(1200);
+                    await page.waitForTimeout(1500);
 
-                    const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 4000 });
+                    // もしカードの詳細拡大画面が誤って開いてしまった場合は、一度Escapeで戻るか、詳細内の入力欄を探す
+                    let editor = await page.$('div[contenteditable="true"], textarea');
+                    if (!editor) {
+                        // 詳細画面が開いている可能性があるので、中のコメント入力欄を直接探す
+                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
+                    }
+
                     if (editor) {
                         await editor.focus();
                         await editor.click();
@@ -196,7 +202,7 @@ async function main() {
 
                         await page.keyboard.press('Enter');
                         console.log('  🚀 コメントを送信しました！');
-                        await page.waitForTimeout(2500);
+                        await page.waitForTimeout(3000);
 
                         // ゲスト名入力を求めるポップアップへの自動対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
@@ -216,7 +222,7 @@ async function main() {
                     console.log(`⚠️ カード ${processedCount + 1} の処理中にエラーが発生したため次へ進みます:`, err.message);
                     processedCount++;
                 } finally {
-                    await clearModals(page);
+                    await dismissOverlays(page);
                 }
             }
         }

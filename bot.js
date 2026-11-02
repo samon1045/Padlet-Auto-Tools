@@ -61,7 +61,7 @@ async function main() {
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // DOMの変化に対応するため、毎回最新のボタンリストを再取得する
+                    // DOMの変化に対応するため、毎回最新のボタンリストを再取得
                     const currentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
                     
                     if (!currentButtons[i]) {
@@ -70,7 +70,11 @@ async function main() {
                     }
 
                     const targetBtn = currentButtons[i];
+
+                    // ★ 画面外に隠れていりカードも確実に画面内にスクロールして表示させる
                     await targetBtn.scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(500);
+
                     await targetBtn.click();
                     await page.waitForTimeout(1500);
 

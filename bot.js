@@ -40,40 +40,50 @@ async function main() {
             console.log(`\n⚡ 【コメント投稿 ${round}回目】開始`);
 
             try {
+                // モーダル等を閉じるためEsc
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
-                // 1. 既存の投稿にある「+ Add comment」または「コメントを追加」を探してクリック
-                console.log('「+ Add comment」ボタンを探しています...');
-                const commentButtons = page.locator('text="+ Add comment", text="コメントを追加", [data-testid="add-comment-button"]');
-                const count = await commentButtons.count();
+                // 1. ページ内から「+ Add comment」または「コメントを追加」の要素を安全に取得してクリック
+                const clicked = await page.evaluate((rIdx) => {
+                    const elements = Array.from(document.querySelectorAll('button, div, span, a'));
+                    const commentTriggers = elements.filter(el => {
+                        const text = (el.innerText || el.textContent || '').trim();
+                        return text === '+ Add comment' || text === 'コメントを追加' || text.includes('Add comment');
+                    });
 
-                if (count === 0) {
+                    if (commentTriggers.length > 0) {
+                        // ループ回数に応じて異なるカードのコメント欄を狙う
+                        const target = commentTriggers[(rIdx - 1) % commentTriggers.length];
+                        target.click();
+                        return true;
+                    }
+                    return false;
+                }, round);
+
+                await page.waitForTimeout(1000);
+                await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
+
+                if (!clicked) {
                     console.log(`[警告] 第 ${round} 回目：コメント追加ボタンが見つかりませんでした。`);
                     await page.screenshot({ path: `screenshot-r${round}-10-failed.png`, fullPage: true });
                     continue;
                 }
 
-                // ラウンドごとに違うカードのコメント欄を狙う（ループで順番に）
-                const targetIndex = (round - 1) % count;
-                await commentButtons.nth(targetIndex).click();
-                await page.waitForTimeout(1000);
-                await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
-
-                // 2. コメント入力欄（contenteditable または textarea）が出現するのを待つ
-                const commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                // 2. コメント入力欄（contenteditable または textarea）の出現を待つ
+                const commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 6000 });
                 if (commentInput) {
                     await commentInput.click();
                     await commentInput.fill(MESSAGE);
                     await page.waitForTimeout(500);
                     await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
 
-                    // 3. 画像が存在する場合はアップロード
+                    // 3. 画像ファイルが存在する場合はアップロード
                     if (fs.existsSync(IMAGE_PATH)) {
                         const fileInput = await page.$('input[type="file"]');
                         if (fileInput) {
                             await fileInput.setInputFiles(IMAGE_PATH);
-                            await page.waitForTimeout(2000); // 画像のプレビュー描画待ち
+                            await page.waitForTimeout(2000); // プレビュー・アップロード待ち
                             await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
                         }
                     }
@@ -82,7 +92,7 @@ async function main() {
                     const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 5000 });
                     if (submitBtn) {
                         await submitBtn.click();
-                        await page.waitForTimeout(3000); // 投稿完了の同期待ち
+                        await page.waitForTimeout(3000); // 投稿完了待ち
                         console.log(`[成功] 第 ${round} 回：コメント＆画像の送信が完了しました！`);
                         await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
                     }

@@ -2,12 +2,20 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値（必要に応じて「校則」の内容に変更してください）
+// 📝 設定値
 const TOPIC_TITLE = process.env.TOPIC_TITLE || '【校則について】';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || '校則をしっかり守りましょう。';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませんねぇ杉！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
+
+// モーダルや残ったオーバーレイを強制的に閉じるヘルパー関数
+async function clearModals(page) {
+    for (let i = 0; i < 3; i++) {
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+    }
+}
 
 async function main() {
     if (process.env.AUTH_JSON) {
@@ -52,6 +60,7 @@ async function main() {
 
         for (let i = 0; i < addButtons.length; i++) {
             try {
+                await clearModals(page);
                 console.log(`\n📍 [セクション ${i + 1} / ${addButtons.length}] に校則の新規投稿を作成中...`);
                 
                 const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -60,16 +69,16 @@ async function main() {
                 if (!targetAddBtn) continue;
 
                 await targetAddBtn.scrollIntoViewIfNeeded();
-                await page.waitForTimeout(800);
-                await targetAddBtn.click();
+                await page.waitForTimeout(500);
+                await targetAddBtn.click({ force: true });
                 await page.waitForTimeout(1500);
 
                 // タイトル入力欄
                 const titleInput = await page.$('input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
-                if (titleInput) {
+                if (titleInput && await titleInput.isVisible()) {
                     await titleInput.fill(TOPIC_TITLE);
                     console.log(`  ✍️ タイトル入力: ${TOPIC_TITLE}`);
-                    await page.waitForTimeout(500);
+                    await page.waitForTimeout(300);
                 }
 
                 // メッセージ（本文）入力欄
@@ -79,7 +88,7 @@ async function main() {
                     await bodyEditor.click();
                     await page.keyboard.insertText(TOPIC_MESSAGE);
                     console.log(`  ✍️ メッセージ入力: ${TOPIC_MESSAGE}`);
-                    await page.waitForTimeout(500);
+                    await page.waitForTimeout(300);
                 }
 
                 // 画像の添付
@@ -89,28 +98,38 @@ async function main() {
                         const targetFileInput = fileInputs[fileInputs.length - 1];
                         await targetFileInput.setInputFiles(IMAGE_PATH);
                         console.log('  🖼️ 新規投稿に画像を添付しました！');
-                        await page.waitForTimeout(2500);
+                        await page.waitForTimeout(2000);
                     }
                 }
 
                 // 公開（Publish）
                 const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
                 if (publishBtn && await publishBtn.isVisible()) {
-                    await publishBtn.click();
+                    await publishBtn.click({ force: true });
                 } else {
                     await page.keyboard.press('Enter');
                 }
                 console.log('  🚀 校則の新規投稿を公開しました！');
-                await page.waitForTimeout(3500);
+                await page.waitForTimeout(2500);
+
+                // ゲスト名入力を求めるポップアップへの自動対応
+                const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
+                const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
+                if (nameInput && doneBtn && await nameInput.isVisible()) {
+                    await nameInput.fill('さーもん bot');
+                    await doneBtn.click({ force: true });
+                    await page.waitForTimeout(1500);
+                }
 
             } catch (err) {
                 console.log(`⚠️ セクション ${i + 1} の新規投稿作成中にエラー:`, err.message);
-                await page.keyboard.press('Escape');
+            } finally {
+                await clearModals(page);
             }
         }
 
         // ==========================================
-        // 2. コメント巡回（DOMが変化しても確実に全カードを捉える完全堅牢ループ）
+        // 2. コメント巡回（オーバーレイ強制リセット付き）
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -122,10 +141,8 @@ async function main() {
             let processedCount = 0;
 
             while (true) {
-                await page.keyboard.press('Escape');
-                await page.waitForTimeout(500);
+                await clearModals(page);
 
-                // 毎回最新の状態で「コメントを追加」ボタンや入力トリガーを安全に再取得する
                 const commentSelectors = [
                     'button:has-text("Add comment")',
                     'button:has-text("コメントを追加")',
@@ -143,7 +160,6 @@ async function main() {
                     }
                 }
 
-                // もし未処理のボタンがなくなったら、このラウンドの巡回は完了
                 if (!targetBtn) {
                     console.log(`✨ このラウンドの全カードのコメント処理が終了しました（処理数: ${processedCount}件）。`);
                     break;
@@ -153,19 +169,20 @@ async function main() {
                     console.log(`\n📍 [カード ${processedCount + 1}] へのコメント投稿処理中...`);
 
                     await targetBtn.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(800);
+                    await page.waitForTimeout(500);
 
-                    await targetBtn.click();
-                    await page.waitForTimeout(1500);
+                    // force: true でオーバーレイがあっても強力にクリック
+                    await targetBtn.click({ force: true });
+                    await page.waitForTimeout(1200);
 
-                    const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                    const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 4000 });
                     if (editor) {
                         await editor.focus();
                         await editor.click();
 
                         await page.keyboard.insertText(COMMENT_MESSAGE);
                         console.log(`  ✍️ コメント入力: ${COMMENT_MESSAGE}`);
-                        await page.waitForTimeout(500);
+                        await page.waitForTimeout(300);
 
                         if (fs.existsSync(IMAGE_PATH)) {
                             const fileInputs = await page.$$('input[type="file"]');
@@ -173,25 +190,23 @@ async function main() {
                                 const targetFileInput = fileInputs[fileInputs.length - 1];
                                 await targetFileInput.setInputFiles(IMAGE_PATH);
                                 console.log('  🖼️ コメントに画像を添付しました！');
-                                await page.waitForTimeout(2500);
+                                await page.waitForTimeout(2000);
                             }
                         }
 
                         await page.keyboard.press('Enter');
                         console.log('  🚀 コメントを送信しました！');
-                        await page.waitForTimeout(3500);
+                        await page.waitForTimeout(2500);
 
                         // ゲスト名入力を求めるポップアップへの自動対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                         const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
-                        
                         if (nameInput && doneBtn && await nameInput.isVisible()) {
                             console.log('  👤 ゲスト名入力を検知。自動入力中...');
                             await nameInput.fill('さーもん bot');
-                            await page.waitForTimeout(500);
-                            await doneBtn.click();
+                            await doneBtn.click({ force: true });
                             console.log('  ✨ 名前を登録しました！');
-                            await page.waitForTimeout(2000);
+                            await page.waitForTimeout(1500);
                         }
                     }
 
@@ -200,7 +215,8 @@ async function main() {
                 } catch (err) {
                     console.log(`⚠️ カード ${processedCount + 1} の処理中にエラーが発生したため次へ進みます:`, err.message);
                     processedCount++;
-                    await page.keyboard.press('Escape');
+                } finally {
+                    await clearModals(page);
                 }
             }
         }

@@ -37,39 +37,39 @@ async function main() {
 
         console.log('ボードの読み込みを確認しました！');
 
-        // 全体の投稿ラウンド（今回は「各カードに2回ずつ」なので、全体を2周する）
+        // 外側ループ：全カードに対して「1回目」と「2回目」のラウンドを回す
         const TOTAL_ROUNDS = 2;
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n============================`);
-            console.log(`⚡ 【全体ループ：第 ${round} 回目】開始`);
+            console.log(`⚡ 【全体巡回：投稿 ${round}回目】開始`);
             console.log(`============================`);
 
-            // 毎回ページ内の最新のコメント追加ボタンをすべて取得し直す
-            const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-            console.log(`検出されたコメント追加ボタン: ${commentButtons.length}件`);
+            // その時点での最新のコメント追加ボタンをすべて取得
+            const buttons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+            console.log(`検出されたターゲット数: ${buttons.length}件`);
 
-            if (commentButtons.length === 0) {
+            if (buttons.length === 0) {
                 console.log('コメント追加ボタンが見つかりませんでした。');
                 break;
             }
 
-            // 見つかったすべてのカードに対して上から順に投稿していく
-            for (let i = 0; i < commentButtons.length; i++) {
+            // 内側ループ：見つかったカードを1つずつ順番に処理
+            for (let i = 0; i < buttons.length; i++) {
                 try {
-                    console.log(`\n📍 カード ${i + 1} / ${commentButtons.length} への投稿処理中...`);
+                    console.log(`\n📍 カード ${i + 1} / ${buttons.length} への投稿処理中...`);
                     
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
                     // DOMの変化に備えて毎回ボタンを再取得
-                    const freshButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                    if (!freshButtons[i]) {
+                    const currentBtns = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+                    if (!currentBtns[i]) {
                         console.log(`⚠️ カード ${i + 1} のボタンが見つからないためスキップします。`);
                         continue;
                     }
 
-                    const targetBtn = freshButtons[i];
+                    const targetBtn = currentBtns[i];
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
                     await targetBtn.click();

@@ -75,27 +75,38 @@ async function main() {
                     await page.waitForTimeout(1000);
                     await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
 
-                    // 3. GIF画像を添付
+                    // 3. 画像ファイルの添付処理
                     if (fs.existsSync(IMAGE_PATH)) {
+                        console.log('画像添付メニュー（＋ボタン）を開いています...');
+                        
+                        // 入力欄の左側にある「＋」ボタン（添付用）をクリックしてファイル選択機能を呼び出す
+                        // コメントコンテナ内にある「＋」アイコンを持つボタンを探索
+                        const attachBtn = await page.$('div[contenteditable="true"] ~ button, div[contenteditable="true"] + div button, button:has(svg):near(div[contenteditable="true"])');
+                        if (attachBtn) {
+                            await attachBtn.click();
+                            await page.waitForTimeout(1000);
+                        }
+
+                        // ファイル入力要素（input[type="file"]）にファイルを設定
                         const fileInput = await page.$('input[type="file"]');
                         if (fileInput) {
                             console.log('GIF画像をアップロード中...');
                             await fileInput.setInputFiles(IMAGE_PATH);
-                            await page.waitForTimeout(3000); 
+                            await page.waitForTimeout(3000); // プレビューの読み込み待ち
                             await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
                         }
                     }
 
-                    // 4. コメント欄の送信ボタン（ピンク色の矢印ボタンや各種送信ボタン）を確実にクリック
-                    // Padletのコメント入力欄の右端にある矢印ボタン（SVGアイコンを含むボタン）をターゲットに追加
+                    // 4. ピンク色の矢印送信ボタンを確実にクリック
+                    // 入力欄の右側にある、背景がピンク色の送信ボタンを特定してクリック
                     const submitBtn = await page.waitForSelector(
-                        'button:has(svg), button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', 
+                        'button:has(svg):right-of(div[contenteditable="true"]), button[aria-label*="送信"], button[aria-label*="投稿"], button:has-text("Publish"), button:has-text("コメント")', 
                         { state: 'visible', timeout: 5000 }
                     );
 
                     if (submitBtn) {
                         await submitBtn.click();
-                        console.log(` -> 第 ${round} 回：送信ボタン（矢印）を押しました！`);
+                        console.log(` -> 第 ${round} 回：送信ボタン（ピンクの矢印）を押しました！`);
                         
                         await page.waitForTimeout(3000);
                         await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });

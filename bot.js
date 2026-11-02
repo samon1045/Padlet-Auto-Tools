@@ -2,7 +2,6 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませんねぇ杉！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
@@ -43,66 +42,45 @@ async function main() {
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n============================`);
-            console.log(`⚡ 【Geminiサポート巡回：投稿 ${round}回目】開始`);
+            console.log(`⚡ 【完全安定巡回：投稿 ${round}回目】開始`);
             console.log(`============================`);
 
-            // 1. ページ内のすべての「コメント追加ボタン」や「カード」の要素位置を全スキャン
-            // より広範囲にセレクタを網羅し、重複を除外してリスト化
-            const commentSelectors = [
-                'button:has-text("Add comment")',
-                'button:has-text("コメントを追加")',
-                'div:has-text("+ Add comment")',
-                'span:has-text("+ Add comment")',
-                'div.comment-add-button',
-                'div[data-testid="comment-button"]'
-            ];
+            // 毎回ループの最初に、その時点にあるコメントボタンの「総数」を数える
+            let processedCount = 0;
+            
+            while (true) {
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(500);
 
-            let buttons = [];
-            for (const selector of commentSelectors) {
-                const found = await page.$$(selector);
-                if (found.length > 0) {
-                    buttons = found;
+                // 常に「上から順にある最初のコメント追加ボタン」を1つだけ安全に取得する
+                const commentSelectors = [
+                    'button:has-text("Add comment")',
+                    'button:has-text("コメントを追加")',
+                    'div:has-text("+ Add comment")',
+                    'span:has-text("+ Add comment")'
+                ];
+
+                let targetBtn = null;
+                for (const sel of commentSelectors) {
+                    const found = await page.$$(sel);
+                    if (found.length > processedCount) {
+                        // まだ処理していない（あるいは新しく出現した）上から順のボタンを狙う
+                        targetBtn = found[processedCount];
+                        if (targetBtn) break;
+                    }
+                }
+
+                // もし対象のボタンが見つからなければ、このラウンドの全カード処理完了
+                if (!targetBtn) {
+                    console.log(`✨ このラウンドの全カード処理が終了しました（処理数: ${processedCount}件）。`);
                     break;
                 }
-            }
 
-            // もしボタンが直接見つからない場合は、カードの投稿コンテナ自体から逆引きする
-            if (buttons.length === 0) {
-                console.log('⚠️ 標準セレクタでのボタン検出数が0件のため、カードコンテナから再スキャンします...');
-                const posts = await page.$$('div.post, div.card, article, div[data-id]');
-                for (const post of posts) {
-                    const btn = await post.$('button, div[role="button"], span');
-                    if (btn) buttons.push(btn);
-                }
-            }
-
-            console.log(`🎯 検出された対象カード数: ${buttons.length}件`);
-
-            if (buttons.length === 0) {
-                console.log('対象のカードが見つかりませんでした。');
-                break;
-            }
-
-            // すべてのカードを1つずつ順番に確実に処理
-            for (let i = 0; i < buttons.length; i++) {
                 try {
-                    console.log(`\n📍 [カード ${i + 1} / ${buttons.length}] への投稿処理中...`);
-                    
-                    await page.keyboard.press('Escape');
-                    await page.waitForTimeout(500);
+                    console.log(`\n📍 [カード ${processedCount + 1}] への投稿処理中...`);
 
-                    // 最新の状態のボタンを再取得してクリック
-                    const currentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                    const targetBtn = currentButtons[i] || buttons[i];
-
-                    if (!targetBtn) {
-                        console.log(`⚠️ カード ${i + 1} の要素が見つからないためスキップします。`);
-                        continue;
-                    }
-
-                    // 画面内に確実にスクロールして表示
                     await targetBtn.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(1000);
+                    await page.waitForTimeout(800);
 
                     await targetBtn.click();
                     await page.waitForTimeout(1500);
@@ -132,7 +110,7 @@ async function main() {
                         // Enterキーで送信
                         await page.keyboard.press('Enter');
                         console.log('  🚀 送信しました！');
-                        await page.waitForTimeout(3000);
+                        await page.waitForTimeout(3500); // 送信後のDOM再描画をしっかり待つ
 
                         // ゲスト名入力を求めるポップアップへの自動対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
@@ -148,8 +126,11 @@ async function main() {
                         }
                     }
 
+                    processedCount++;
+
                 } catch (err) {
-                    console.log(`⚠️ カード ${i + 1} の処理中にエラーが発生しました:`, err.message);
+                    console.log(`⚠️ 処理中にエラーが発生したため、次のカードへ進みます:`, err.message);
+                    processedCount++; // エラー時も無限ループ防止のためインクリメント
                     await page.keyboard.press('Escape');
                 }
             }

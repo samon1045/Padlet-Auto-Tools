@@ -9,7 +9,7 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// 画面上の余計なモーダルや拡大ビューを徹底的に閉じるヘルパー
+// 画面上の余計なモーダルや拡大ビューを徹底적으로閉じるヘルパー
 async function dismissOverlays(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
@@ -47,6 +47,7 @@ async function main() {
         }
 
         console.log('ボードの読み込みを確認しました！');
+        await page.screenshot({ path: 'screenshot-loaded.png', fullPage: true });
 
         // ==========================================
         // 1. 各セクションに「校則」の新規投稿を作成
@@ -112,6 +113,9 @@ async function main() {
                 console.log('  🚀 校則の新規投稿を公開しました！');
                 await page.waitForTimeout(2500);
 
+                // アクションごとのスクリーンショット保存
+                await page.screenshot({ path: `screenshot-topic-sec${i + 1}.png`, fullPage: true });
+
                 // ゲスト名入力を求めるポップアップへの自動対応
                 const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                 const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
@@ -123,13 +127,14 @@ async function main() {
 
             } catch (err) {
                 console.log(`⚠️ セクション ${i + 1} の新規投稿作成中にエラー:`, err.message);
+                await page.screenshot({ path: `screenshot-error-sec${i + 1}.png`, fullPage: true });
             } finally {
                 await dismissOverlays(page);
             }
         }
 
         // ==========================================
-        // 2. コメント巡回（詳細拡大ビューの干渉を完全ブロック）
+        // 2. コメント巡回（アクションごとのスクリーンショット付き）
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -166,19 +171,16 @@ async function main() {
                 }
 
                 try {
-                    console.log(`\n📍 [カード ${processedCount + 1}] へのコメント投稿処理中...`);
+                    console.log(`\n📍 [ラウンド ${round} - カード ${processedCount + 1}] へのコメント投稿処理中...`);
 
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
 
-                    // 誤ってカードの拡大ビューが開かないよう、ボタンピンポイントでクリック
                     await targetBtn.click({ force: true });
                     await page.waitForTimeout(1500);
 
-                    // もしカードの詳細拡大画面が誤って開いてしまった場合は、一度Escapeで戻るか、詳細内の入力欄を探す
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
-                        // 詳細画面が開いている可能性があるので、中のコメント入力欄を直接探す
                         editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
                     }
 
@@ -204,6 +206,9 @@ async function main() {
                         console.log('  🚀 コメントを送信しました！');
                         await page.waitForTimeout(3000);
 
+                        // アクションごとのスクリーンショット保存
+                        await page.screenshot({ path: `screenshot-r${round}-card${processedCount + 1}.png`, fullPage: true });
+
                         // ゲスト名入力を求めるポップアップへの自動対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                         const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
@@ -220,6 +225,7 @@ async function main() {
 
                 } catch (err) {
                     console.log(`⚠️ カード ${processedCount + 1} の処理中にエラーが発生したため次へ進みます:`, err.message);
+                    await page.screenshot({ path: `screenshot-error-r${round}-card${processedCount + 1}.png`, fullPage: true });
                     processedCount++;
                 } finally {
                     await dismissOverlays(page);
@@ -232,7 +238,7 @@ async function main() {
 
     } catch (error) {
         console.error('致命的なエラーが発生しました:', error);
-        await page.screenshot({ path: 'screenshot-error.png', fullPage: true });
+        await page.screenshot({ path: 'screenshot-error-fatal.png', fullPage: true });
         process.exit(1);
     } finally {
         await browser.close();

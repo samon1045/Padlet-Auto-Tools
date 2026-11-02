@@ -3,9 +3,9 @@ const path = require('path');
 const fs = require('fs');
 
 // 📝 設定値
-const TOPIC_TITLE = process.env.TOPIC_TITLE || 'お前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗお前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
-const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || 'お前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗお前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
-const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'お前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗお前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
+const TOPIC_TITLE = process.env.TOPIC_TITLE || 'm';
+const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || 'm';
+const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'm';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
@@ -109,7 +109,7 @@ async function main() {
         console.log('📂 【校則の新規投稿作成（2回ずつ）】開始');
         console.log('============================');
 
-        const TOPIC_ROUNDS = 70; // 新規投稿を各セクション2回行う
+        const TOPIC_ROUNDS = 15; // 新規投稿を各セクション2回行う
 
         for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
             console.log(`\n--- 新規投稿 ラウンド ${tRound}回目 ---`);
@@ -185,7 +185,7 @@ async function main() {
         // ==========================================
         // 2. コメント巡回（2回ずつ実行）
         // ==========================================
-        const COMMENT_ROUNDS = 70;
+        const COMMENT_ROUNDS = 15;
 
         for (let round = 1; round <= COMMENT_ROUNDS; round++) {
             console.log(`\n============================`);

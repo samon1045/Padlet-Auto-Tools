@@ -2,7 +2,9 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-const MESSAGE = process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
+// 📝 設定値
+const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || '【新規投稿】おまえらやりませんねぇ杉！！';
+const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || '【コメント】おまえらやりませんねぇ杉！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
@@ -37,104 +39,117 @@ async function main() {
 
         console.log('ボードの読み込みを確認しました！');
 
-        // 各セクション（列）または投稿カードのコンテナを直接取得する
-        // Padletのセクションやカラム要素を特定
-        const sections = await page.$$('section, div[data-section-id], div.section, div.board-section');
-        console.log(`検出されたセクション数: ${sections.length}件`);
+        // 1. 各セクション（またはボード全体）の「+ 投稿」ボタンを取得して、新規投稿＆画像添付を行う
+        console.log('\n--- 📂 新規投稿の作成処理を開始 ---');
+        const addPostButtons = await page.$$('button:has-text("投稿"), button:has-text("Add post"), button[aria-label*="投稿"], div.section-add-button');
+        
+        for (let i = 0; i < addPostButtons.length; i++) {
+            try {
+                const freshAddBtns = await page.$$('button:has-text("投稿"), button:has-text("Add post"), button[aria-label*="投稿"], div.section-add-button');
+                if (!freshAddBtns[i]) continue;
 
-        // もしセクションが綺麗に取れない場合は、カード全体のブロックをベースにする
-        const targetContainers = sections.length > 0 ? sections : await page.$$('div.post, div.card, div[data-id]');
+                await freshAddBtns[i].scrollIntoViewIfNeeded();
+                await freshAddBtns[i].click();
+                console.log(`📍 セクション ${i + 1} に新規投稿を作成中...`);
+                await page.waitForTimeout(1500);
 
-        // 各セクションに対して確実に「2回ずつ」投稿する
+                // 新規投稿のタイトルまたは本文入力欄
+                const postEditor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                if (postEditor) {
+                    await postEditor.focus();
+                    await postEditor.click();
+                    await page.keyboard.insertText(TOPIC_MESSAGE);
+                    console.log(`  ✍️ 新規投稿メッセージ入力: ${TOPIC_MESSAGE}`);
+                    await page.waitForTimeout(500);
+
+                    // 画像（GIF）の添付
+                    if (fs.existsSync(IMAGE_PATH)) {
+                        const fileInputs = await page.$$('input[type="file"]');
+                        if (fileInputs.length > 0) {
+                            await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
+                            console.log('  🖼️ 新規投稿に画像を添付しました！');
+                            await page.waitForTimeout(2500);
+                        }
+                    }
+
+                    // 投稿の保存（発行）
+                    const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
+                    if (publishBtn && await publishBtn.isVisible()) {
+                        await publishBtn.click();
+                    } else {
+                        await page.keyboard.press('Enter');
+                    }
+                    console.log('  🚀 新規投稿を公開しました！');
+                    await page.waitForTimeout(3000);
+                }
+            } catch (err) {
+                console.log(`⚠️ 新規投稿処理中のエラー:`, err.message);
+                await page.keyboard.press('Escape');
+            }
+        }
+
+        // 2. 各カードの「コメントを追加」に対して、別メッセージでコメントを2回ずつ投稿する
+        console.log('\n--- 💬 コメントの連続投稿処理を開始 ---');
         const TOTAL_ROUNDS = 2;
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-            console.log(`\n============================`);
-            console.log(`⚡ 【全体巡回：投稿 ${round}回目】開始`);
-            console.log(`============================`);
-
-            // ページ内にあるすべての「コメント追加ボタン」を最新の状態で取得
+            console.log(`\n⚡ 【コメント巡回：第 ${round} 回目】`);
             const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-            console.log(`検出されたコメントボタン総数: ${commentButtons.length}件`);
 
-            if (commentButtons.length === 0) {
-                console.log('コメント追加ボタンが見つかりませんでした。');
-                break;
-            }
-
-            // 各セクション/カードに紐づくボタンを1つずつ正確に処理
             for (let i = 0; i < commentButtons.length; i++) {
                 try {
-                    console.log(`\n📍 【セクション・カード ${i + 1} / ${commentButtons.length}】への投稿処理中...`);
-                    
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // DOMの変化に備えて毎回ボタンを再取得
-                    const freshButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                    
-                    if (!freshButtons[i]) {
-                        console.log(`⚠️ ${i + 1}番目のボタンが見つからないためスキップします。`);
-                        continue;
-                    }
+                    const freshCommentBtns = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+                    if (!freshCommentBtns[i]) continue;
 
-                    const targetBtn = freshButtons[i];
-
-                    // 画面内に確実にスクロールして表示させる
-                    await targetBtn.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(800);
-
-                    await targetBtn.click();
+                    await freshCommentBtns[i].scrollIntoViewIfNeeded();
+                    await freshCommentBtns[i].click();
                     await page.waitForTimeout(1500);
 
-                    // メッセージ入力欄の待機と言語入力
-                    const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
-                    if (editor) {
-                        await editor.focus();
-                        await editor.click();
+                    const commentEditor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                    if (commentEditor) {
+                        await commentEditor.focus();
+                        await commentEditor.click();
 
-                        await page.keyboard.insertText(MESSAGE);
-                        console.log(`  ✍️ メッセージ入力完了: ${MESSAGE}`);
+                        // コメント用のメッセージを使用
+                        await page.keyboard.insertText(COMMENT_MESSAGE);
+                        console.log(`  ✍️ コメント入力: ${COMMENT_MESSAGE}`);
                         await page.waitForTimeout(500);
 
-                        // GIF画像の添付
+                        // コメントにも画像を付けたい場合
                         if (fs.existsSync(IMAGE_PATH)) {
                             const fileInputs = await page.$$('input[type="file"]');
                             if (fileInputs.length > 0) {
-                                const targetFileInput = fileInputs[fileInputs.length - 1];
-                                await targetFileInput.setInputFiles(IMAGE_PATH);
-                                console.log('  🖼️ 画像を添付しました！');
+                                await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
                                 await page.waitForTimeout(2500);
                             }
                         }
 
-                        // 送信（Enterキー）
                         await page.keyboard.press('Enter');
-                        console.log('  🚀 送信しました！');
+                        console.log('  🚀 コメントを送信しました！');
                         await page.waitForTimeout(3000);
 
-                        // ゲスト名の自動入力ポップアップ対応
+                        // ゲスト名入力ポップアップの自動対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                         const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                         
                         if (nameInput && doneBtn && await nameInput.isVisible()) {
-                            console.log('  👤 ゲスト名入力を検知。自動入力中...');
                             await nameInput.fill('さーもん bot');
                             await page.waitForTimeout(500);
                             await doneBtn.click();
-                            console.log('  ✨ 名前を登録しました！');
                             await page.waitForTimeout(2000);
                         }
                     }
-
                 } catch (err) {
-                    console.log(`⚠️ 処理中にエラーが発生しました:`, err.message);
+                    console.log(`⚠️ コメント処理中のエラー:`, err.message);
                     await page.keyboard.press('Escape');
                 }
             }
         }
 
-        console.log('\n🎉 全てのセクションへの投稿処理が完了しました！');
+        console.log('\n🎉 全ての処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
 
     } catch (error) {

@@ -37,92 +37,86 @@ async function main() {
 
         console.log('ボードの読み込みを確認しました！');
 
-        // 初めに検出されたボタンの総数を取得
-        const initialButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-        const totalCards = initialButtons.length;
-        console.log(`検出されたコメント追加ボタン（カード数）: ${totalCards}件`);
+        // 全体の投稿ラウンド（今回は「各カードに2回ずつ」なので、全体を2周する）
+        const TOTAL_ROUNDS = 2;
 
-        if (totalCards === 0) {
-            console.log('コメント追加ボタンが見つかりませんでした。');
-            return;
-        }
-
-        // 各カードに対して順番に処理を行う
-        for (let i = 0; i < totalCards; i++) {
+        for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n============================`);
-            console.log(`📍 【セクション・カード ${i + 1} / ${totalCards}】への投稿処理`);
+            console.log(`⚡ 【全体ループ：第 ${round} 回目】開始`);
             console.log(`============================`);
 
-            // 各カードに対して「2回」投稿を繰り返す
-            for (let round = 1; round <= 2; round++) {
-                console.log(`\n⚡ ↳ 【${i + 1}番目のカード：投稿 ${round}回目】開始`);
+            // 毎回ページ内の最新のコメント追加ボタンをすべて取得し直す
+            const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+            console.log(`検出されたコメント追加ボタン: ${commentButtons.length}件`);
 
+            if (commentButtons.length === 0) {
+                console.log('コメント追加ボタンが見つかりませんでした。');
+                break;
+            }
+
+            // 見つかったすべてのカードに対して上から順に投稿していく
+            for (let i = 0; i < commentButtons.length; i++) {
                 try {
+                    console.log(`\n📍 カード ${i + 1} / ${commentButtons.length} への投稿処理中...`);
+                    
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // DOMの変化に対応するため、毎回最新のボタンリストを再取得
-                    const currentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                    
-                    if (!currentButtons[i]) {
-                        console.log(`⚠️ ${i + 1}番目のコメント追加ボタンが見つからないためスキップします。`);
-                        break;
+                    // DOMの変化に備えて毎回ボタンを再取得
+                    const freshButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+                    if (!freshButtons[i]) {
+                        console.log(`⚠️ カード ${i + 1} のボタンが見つからないためスキップします。`);
+                        continue;
                     }
 
-                    const targetBtn = currentButtons[i];
-
-                    // ★ 画面外に隠れていりカードも確実に画面内にスクロールして表示させる
+                    const targetBtn = freshButtons[i];
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
-
                     await targetBtn.click();
                     await page.waitForTimeout(1500);
 
-                    // メッセージ入力欄の取得
+                    // メッセージ入力欄の待機と言語入力
                     const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
                     if (editor) {
                         await editor.focus();
                         await editor.click();
 
-                        // メッセージを入力
                         await page.keyboard.insertText(MESSAGE);
-                        console.log(`メッセージを入力しました: ${MESSAGE}`);
+                        console.log(`  ✍️ メッセージ入力完了: ${MESSAGE}`);
                         await page.waitForTimeout(500);
 
-                        // GIF画像をアップロード（input[type="file"]経由）
+                        // GIF画像の添付
                         if (fs.existsSync(IMAGE_PATH)) {
                             const fileInputs = await page.$$('input[type="file"]');
                             if (fileInputs.length > 0) {
                                 const targetFileInput = fileInputs[fileInputs.length - 1];
                                 await targetFileInput.setInputFiles(IMAGE_PATH);
-                                console.log('画像を添付しました！');
+                                console.log('  🖼️ 画像を添付しました！');
                                 await page.waitForTimeout(2500);
                             }
                         }
 
-                        // 送信（Enterキー送信）
+                        // 送信（Enterキー）
                         await page.keyboard.press('Enter');
-                        console.log(' -> Enterキーで送信しました！');
+                        console.log('  🚀 送信しました！');
                         await page.waitForTimeout(2500);
 
-                        // ゲスト名入力を求めるポップアップ（"What should we call you?"）への自動対応
+                        // ゲスト名の自動入力ポップアップ対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                         const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                         
                         if (nameInput && doneBtn && await nameInput.isVisible()) {
-                            console.log('ゲスト名の入力を検知しました。自動入力します...');
+                            console.log('  👤 ゲスト名入力を検知。自動入力中...');
                             await nameInput.fill('さーもん bot');
                             await page.waitForTimeout(500);
                             await doneBtn.click();
-                            console.log('名前を登録して完了しました！');
+                            console.log('  ✨ 名前を登録しました！');
                             await page.waitForTimeout(2000);
                         }
-
-                        console.log(`  ✨ ${i + 1}番目のカードへの投稿（${round}回目）が完了しました！`);
                     }
 
                 } catch (err) {
-                    console.log(`⚠️ 投稿中にエラーが発生しました:`, err.message);
+                    console.log(`⚠️ カード ${i + 1} の処理中にエラーが発生しました:`, err.message);
                     await page.keyboard.press('Escape');
                 }
             }

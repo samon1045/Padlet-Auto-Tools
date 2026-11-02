@@ -31,8 +31,7 @@ async function main() {
 
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(3000);
-        // 【デバッグ】ページ読み込み直後のスクショ
-        await page.screenshot({ path: 'debug-01-loaded.png', fullPage: true });
+        await page.screenshot({ path: 'screenshot-01-loaded.png', fullPage: true });
 
         // 合計2回実行
         const TOTAL_ROUNDS = 2; 
@@ -41,7 +40,6 @@ async function main() {
             console.log(`\n⚡ 【処理 ${round}回目】開始`);
 
             try {
-                // モーダルを閉じるためにEscape
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
@@ -73,36 +71,37 @@ async function main() {
                     return false;
                 }, round);
 
-                // 【デバッグ】セクションの「＋」をクリックした直後のスクショ
-                await page.screenshot({ path: `debug-r${round}-02-after-section-click.png`, fullPage: true });
+                await page.waitForTimeout(1000);
+                await page.screenshot({ path: `screenshot-r${round}-02-after-section-click.png`, fullPage: true });
 
                 if (clickedSection) {
-                    await page.waitForTimeout(1000);
-                    const editor = await page.$('div[contenteditable="true"], textarea');
+                    // 入力欄が出現するのを少し長めに待つ
+                    let editor = null;
+                    try {
+                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                    } catch (e) {}
+
                     if (editor) {
                         await editor.fill(MESSAGE);
-                        await page.waitForTimeout(300);
-                        // 【デバッグ】文字入力直後のスクショ
-                        await page.screenshot({ path: `debug-r${round}-03-filled.png`, fullPage: true });
+                        await page.waitForTimeout(500);
+                        await page.screenshot({ path: `screenshot-r${round}-03-filled.png`, fullPage: true });
 
                         if (fs.existsSync(IMAGE_PATH)) {
                             const fileInput = await page.$('input[type="file"]');
                             if (fileInput) {
                                 await fileInput.setInputFiles(IMAGE_PATH);
-                                await page.waitForTimeout(1000);
-                                // 【デバッグ】画像添付直後のスクショ
-                                await page.screenshot({ path: `debug-r${round}-04-image-attached.png`, fullPage: true });
+                                await page.waitForTimeout(1500);
+                                await page.screenshot({ path: `screenshot-r${round}-04-image-attached.png`, fullPage: true });
                             }
                         }
 
-                        const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]', { state: 'visible', timeout: 3000 });
+                        const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]', { state: 'visible', timeout: 5000 });
                         if (publishBtn) {
                             await publishBtn.click();
-                            await page.waitForTimeout(1500);
+                            await page.waitForTimeout(2000);
                             console.log(`[成功] 第 ${round} 回：新規投稿が完了しました！`);
                             actionDone = true;
-                            // 【デバッグ】新規投稿完了直後のスクショ
-                            await page.screenshot({ path: `debug-r${round}-05-published.png`, fullPage: true });
+                            await page.screenshot({ path: `screenshot-r${round}-05-published.png`, fullPage: true });
                         }
                     }
                 }
@@ -128,36 +127,36 @@ async function main() {
                         return false;
                     }, round);
 
-                    // 【デバッグ】コメントボタンをクリックした直後のスクショ
-                    await page.screenshot({ path: `debug-r${round}-06-after-comment-click.png`, fullPage: true });
+                    await page.waitForTimeout(1000);
+                    await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
 
                     if (clickedComment) {
-                        await page.waitForTimeout(1000);
-                        const commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 });
+                        let commentInput = null;
+                        try {
+                            commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                        } catch (e) {}
+
                         if (commentInput) {
                             await commentInput.fill(MESSAGE);
-                            await page.waitForTimeout(300);
-                            // 【デバッグ】コメント入力直後のスクショ
-                            await page.screenshot({ path: `debug-r${round}-07-comment-filled.png`, fullPage: true });
+                            await page.waitForTimeout(500);
+                            await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
 
                             if (fs.existsSync(IMAGE_PATH)) {
                                 const fileInput = await page.$('input[type="file"]');
                                 if (fileInput) {
                                     await fileInput.setInputFiles(IMAGE_PATH);
-                                    await page.waitForTimeout(1000);
-                                    // 【デバッグ】コメントに画像添付直後のスクショ
-                                    await page.screenshot({ path: `debug-r${round}-08-comment-image-attached.png`, fullPage: true });
+                                    await page.waitForTimeout(1500);
+                                    await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
                                 }
                             }
 
-                            const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 3000 });
+                            const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 5000 });
                             if (submitBtn) {
                                 await submitBtn.click();
-                                await page.waitForTimeout(1500);
+                                await page.waitForTimeout(2000);
                                 console.log(`[成功] 第 ${round} 回：コメント投稿が完了しました！`);
                                 actionDone = true;
-                                // 【デバッグ】コメント投稿完了直後のスクショ
-                                await page.screenshot({ path: `debug-r${round}-09-comment-submitted.png`, fullPage: true });
+                                await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
                             }
                         }
                     }
@@ -165,14 +164,12 @@ async function main() {
 
                 if (!actionDone) {
                     console.log(`[警告] 第 ${round} 回目：新規投稿もコメント投稿もできませんでした。`);
-                    // 【デバッグ】失敗時のスクショ
-                    await page.screenshot({ path: `debug-r${round}-10-failed.png`, fullPage: true });
+                    await page.screenshot({ path: `screenshot-r${round}-10-failed.png`, fullPage: true });
                 }
 
             } catch (err) {
                 console.log(`第 ${round} 回目でエラーが発生しました:`, err.message);
-                // 【デバッグ】エラー発生時のスクショ
-                await page.screenshot({ path: `debug-r${round}-error.png`, fullPage: true });
+                await page.screenshot({ path: `screenshot-r${round}-error.png`, fullPage: true });
                 await page.keyboard.press('Escape');
             }
         }

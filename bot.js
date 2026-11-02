@@ -1,33 +1,10 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
-const { GoogleGenAI } = require('@google/genai'); // Gemini API用
 
+const MESSAGE = process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
-
-// Gemini APIを使ったメッセージ生成関数
-async function generateMessageWithGemini() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        // APIキーがない場合のフォールバック
-        return process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
-    }
-
-    try {
-        console.log('🤖 Gemini APIでメッセージを生成中...');
-        const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: 'Padletの掲示板に投稿する、少しおふざけで盛り上げるための短いメッセージ（例：「おまえらやりませんねぇ杉！！」など）を1つだけ、余計な解説なしで生成してください。',
-        });
-        const text = response.text ? response.text.trim() : '';
-        return text || 'おまえらやりませんねぇ杉！！';
-    } catch (err) {
-        console.log('Gemini APIの呼び出しに失敗しました。デフォルトメッセージを使います:', err.message);
-        return process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
-    }
-}
 
 async function main() {
     if (process.env.AUTH_JSON) {
@@ -43,6 +20,10 @@ async function main() {
     const context = await browser.newContext(
         hasStorageState ? { storageState: 'auth.json' } : {}
     );
+
+    // ★ クリップボードの読み書き権限を自動的に許可する設定を追加
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
     const page = await context.newPage();
 
     try {
@@ -67,7 +48,6 @@ async function main() {
             console.log(`\n⚡ 【コメント投稿 ${round}回目】開始`);
 
             try {
-                // モーダル等を閉じるためEsc
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
@@ -91,18 +71,16 @@ async function main() {
                     await editor.focus();
                     await editor.click();
 
-                    // Gemini API（または環境変数）からメッセージを取得して入力
-                    const messageToPost = await generateMessageWithGemini();
-                    await page.keyboard.insertText(messageToPost);
-                    console.log(`メッセージを入力しました: ${messageToPost}`);
+                    // メッセージを入力
+                    await page.keyboard.insertText(MESSAGE);
+                    console.log(`メッセージを入力しました: ${MESSAGE}`);
                     await page.waitForTimeout(500);
 
-                    // 3. 【新手法】画像をクリップボードに読み込ませて「貼り付け（Ctrl+V / Cmd+V）」する
+                    // 3. 権限が許可されたクリップボード経由で画像を貼り付け
                     if (fs.existsSync(IMAGE_PATH)) {
                         console.log('画像をクリップボード経由で貼り付け中...');
                         const imageBuffer = fs.readFileSync(IMAGE_PATH);
                         
-                        // ブラウザのクリップボードに画像を書き込む
                         await page.evaluate(async (imgBase64) => {
                             const res = await fetch(`data:image/gif;base64,${imgBase64}`);
                             const blob = await res.blob();
@@ -111,13 +89,12 @@ async function main() {
                             ]);
                         }, imageBuffer.toString('base64'));
 
-                        // 入力欄にフォーカスを当てて貼り付けショートカットを実行
                         await editor.focus();
-                        await page.keyboard.press('Control+V'); // Mac環境なら Meta+V
-                        await page.waitForTimeout(2500); // 貼り付けとプレビュー描画待ち
+                        await page.keyboard.press('Control+V');
+                        await page.waitForTimeout(2500);
                     }
 
-                    // 4. 送信ボタン（ピンクの矢印）をクリック、またはEnterキー
+                    // 4. 送信ボタンをクリック、またはEnterキー
                     const submitBtn = await page.$('button[aria-label*="送信"], button[aria-label*="投稿"], button.bg-pink-500, button:has(svg.lucide-arrow-right), button:has(svg.lucide-send)');
                     
                     if (submitBtn && await submitBtn.isVisible()) {
@@ -130,7 +107,7 @@ async function main() {
 
                     await page.waitForTimeout(2000);
 
-                    // 5. ゲスト名入力を求めるポップアップ（"What should we call you?"）への自動対応
+                    // 5. ゲスト名入力を求めるポップアップの自動突破
                     const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                     const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                     

@@ -33,124 +33,59 @@ async function main() {
         await page.waitForTimeout(3000);
         await page.screenshot({ path: 'screenshot-01-loaded.png', fullPage: true });
 
-        // 合計2回実行
+        // 2回コメント＆画像投稿を実行
         const TOTAL_ROUNDS = 2; 
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-            console.log(`\n⚡ 【処理 ${round}回目】開始`);
+            console.log(`\n⚡ 【コメント投稿 ${round}回目】開始`);
 
             try {
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
-                let actionDone = false;
+                // 1. 既存の投稿にある「+ Add comment」または「コメントを追加」を探してクリック
+                console.log('「+ Add comment」ボタンを探しています...');
+                const commentButtons = page.locator('text="+ Add comment", text="コメントを追加", [data-testid="add-comment-button"]');
+                const count = await commentButtons.count();
 
-                // ==========================================
-                // 1. デフォルト：新規投稿（各セクションの「＋」ボタン）を試す
-                // ==========================================
-                console.log('新規投稿（＋ボタン）を試みます...');
-                
-                // Playwrightのネイティブ機能で「+」というテキストを持つボタンを探してクリック
-                // セクションごとに複数ある場合、roundのインデックス（0, 1...）に合わせて選択
-                const plusButtons = page.locator('button:has-text("+"), [aria-label*="Add post"], [aria-label*="投稿を追加"]');
-                const count = await plusButtons.count();
-
-                let clickedSection = false;
-                if (count > 0) {
-                    const targetIndex = (round - 1) % count;
-                    await plusButtons.nth(targetIndex).click({ timeout: 3000 }).catch(() => {});
-                    clickedSection = true;
-                }
-
-                await page.waitForTimeout(1000);
-                await page.screenshot({ path: `screenshot-r${round}-02-after-section-click.png`, fullPage: true });
-
-                if (clickedSection) {
-                    let editor = null;
-                    try {
-                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 4000 });
-                    } catch (e) {}
-
-                    if (editor) {
-                        await editor.fill(MESSAGE);
-                        await page.waitForTimeout(500);
-                        await page.screenshot({ path: `screenshot-r${round}-03-filled.png`, fullPage: true });
-
-                        if (fs.existsSync(IMAGE_PATH)) {
-                            const fileInput = await page.$('input[type="file"]');
-                            if (fileInput) {
-                                await fileInput.setInputFiles(IMAGE_PATH);
-                                await page.waitForTimeout(1500);
-                                await page.screenshot({ path: `screenshot-r${round}-04-image-attached.png`, fullPage: true });
-                            }
-                        }
-
-                        const publishBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("投稿"), [data-testid="publish-button"]', { state: 'visible', timeout: 5000 });
-                        if (publishBtn) {
-                            await publishBtn.click();
-                            await page.waitForTimeout(2000);
-                            console.log(`[成功] 第 ${round} 回：新規投稿が完了しました！`);
-                            actionDone = true;
-                            await page.screenshot({ path: `screenshot-r${round}-05-published.png`, fullPage: true });
-                        }
-                    }
-                }
-
-                // ==========================================
-                // 2. 新規投稿ができない場所だった場合：コメント投稿に切り替え
-                // ==========================================
-                if (!actionDone) {
-                    console.log('新規投稿ができないため、既存の投稿へのコメント投稿に切り替えます...');
-
-                    // 「+ Add comment」または「コメントを追加」テキストを持つ要素を確実にクリック
-                    const commentButtons = page.locator('text="+ Add comment", text="コメントを追加"');
-                    const commentCount = await commentButtons.count();
-
-                    let clickedComment = false;
-                    if (commentCount > 0) {
-                        const targetIndex = (round - 1) % commentCount;
-                        await commentButtons.nth(targetIndex).click({ timeout: 3000 }).catch(() => {});
-                        clickedComment = true;
-                    }
-
-                    await page.waitForTimeout(1000);
-                    await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
-
-                    if (clickedComment) {
-                        let commentInput = null;
-                        try {
-                            commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 4000 });
-                        } catch (e) {}
-
-                        if (commentInput) {
-                            await commentInput.fill(MESSAGE);
-                            await page.waitForTimeout(500);
-                            await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
-
-                            if (fs.existsSync(IMAGE_PATH)) {
-                                const fileInput = await page.$('input[type="file"]');
-                                if (fileInput) {
-                                    await fileInput.setInputFiles(IMAGE_PATH);
-                                    await page.waitForTimeout(1500);
-                                    await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
-                                }
-                            }
-
-                            const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 5000 });
-                            if (submitBtn) {
-                                await submitBtn.click();
-                                await page.waitForTimeout(2000);
-                                console.log(`[成功] 第 ${round} 回：コメント投稿が完了しました！`);
-                                actionDone = true;
-                                await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
-                            }
-                        }
-                    }
-                }
-
-                if (!actionDone) {
-                    console.log(`[警告] 第 ${round} 回目：新規投稿もコメント投稿もできませんでした。`);
+                if (count === 0) {
+                    console.log(`[警告] 第 ${round} 回目：コメント追加ボタンが見つかりませんでした。`);
                     await page.screenshot({ path: `screenshot-r${round}-10-failed.png`, fullPage: true });
+                    continue;
+                }
+
+                // ラウンドごとに違うカードのコメント欄を狙う（ループで順番に）
+                const targetIndex = (round - 1) % count;
+                await commentButtons.nth(targetIndex).click();
+                await page.waitForTimeout(1000);
+                await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
+
+                // 2. コメント入力欄（contenteditable または textarea）が出現するのを待つ
+                const commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                if (commentInput) {
+                    await commentInput.click();
+                    await commentInput.fill(MESSAGE);
+                    await page.waitForTimeout(500);
+                    await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
+
+                    // 3. 画像が存在する場合はアップロード
+                    if (fs.existsSync(IMAGE_PATH)) {
+                        const fileInput = await page.$('input[type="file"]');
+                        if (fileInput) {
+                            await fileInput.setInputFiles(IMAGE_PATH);
+                            await page.waitForTimeout(2000); // 画像のプレビュー描画待ち
+                            await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
+                        }
+                    }
+
+                    // 4. 送信ボタン（Publish / コメント / 送信など）をクリック
+                    const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 5000 });
+                    if (submitBtn) {
+                        await submitBtn.click();
+                        await page.waitForTimeout(3000); // 投稿完了の同期待ち
+                        console.log(`[成功] 第 ${round} 回：コメント＆画像の送信が完了しました！`);
+                        await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
+                    }
                 }
 
             } catch (err) {

@@ -49,36 +49,26 @@ async function main() {
                 // 1. デフォルト：新規投稿（各セクションの「＋」ボタン）を試す
                 // ==========================================
                 console.log('新規投稿（＋ボタン）を試みます...');
-                const clickedSection = await page.evaluate((rIdx) => {
-                    const sections = Array.from(document.querySelectorAll('div[data-section-id], section, div[class*="section"]'));
-                    const addButtons = [];
+                
+                // Playwrightのネイティブ機能で「+」というテキストを持つボタンを探してクリック
+                // セクションごとに複数ある場合、roundのインデックス（0, 1...）に合わせて選択
+                const plusButtons = page.locator('button:has-text("+"), [aria-label*="Add post"], [aria-label*="投稿を追加"]');
+                const count = await plusButtons.count();
 
-                    sections.forEach(sec => {
-                        const btns = Array.from(sec.querySelectorAll('button'));
-                        const matchBtn = btns.find(b => {
-                            const text = (b.innerText || b.textContent || '').trim();
-                            const aria = b.getAttribute('aria-label') || '';
-                            return text === '+' || text.toLowerCase() === 'add' || aria.includes('Add post') || aria.includes('投稿を追加');
-                        });
-                        if (matchBtn) addButtons.push(matchBtn);
-                    });
-
-                    if (addButtons.length > 0) {
-                        const target = addButtons[(rIdx - 1) % addButtons.length];
-                        target.click();
-                        return true;
-                    }
-                    return false;
-                }, round);
+                let clickedSection = false;
+                if (count > 0) {
+                    const targetIndex = (round - 1) % count;
+                    await plusButtons.nth(targetIndex).click({ timeout: 3000 }).catch(() => {});
+                    clickedSection = true;
+                }
 
                 await page.waitForTimeout(1000);
                 await page.screenshot({ path: `screenshot-r${round}-02-after-section-click.png`, fullPage: true });
 
                 if (clickedSection) {
-                    // 入力欄が出現するのを少し長めに待つ
                     let editor = null;
                     try {
-                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 4000 });
                     } catch (e) {}
 
                     if (editor) {
@@ -112,20 +102,16 @@ async function main() {
                 if (!actionDone) {
                     console.log('新規投稿ができないため、既存の投稿へのコメント投稿に切り替えます...');
 
-                    const clickedComment = await page.evaluate((rIdx) => {
-                        const allElements = Array.from(document.querySelectorAll('button, div, span'));
-                        const commentBtns = allElements.filter(el => {
-                            const text = (el.innerText || el.textContent || '').trim();
-                            return text === '+ Add comment' || text === 'コメントを追加' || text.includes('Add comment');
-                        });
+                    // 「+ Add comment」または「コメントを追加」テキストを持つ要素を確実にクリック
+                    const commentButtons = page.locator('text="+ Add comment", text="コメントを追加"');
+                    const commentCount = await commentButtons.count();
 
-                        if (commentBtns.length > 0) {
-                            const target = commentBtns[(rIdx - 1) % commentBtns.length];
-                            target.click();
-                            return true;
-                        }
-                        return false;
-                    }, round);
+                    let clickedComment = false;
+                    if (commentCount > 0) {
+                        const targetIndex = (round - 1) % commentCount;
+                        await commentButtons.nth(targetIndex).click({ timeout: 3000 }).catch(() => {});
+                        clickedComment = true;
+                    }
 
                     await page.waitForTimeout(1000);
                     await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
@@ -133,7 +119,7 @@ async function main() {
                     if (clickedComment) {
                         let commentInput = null;
                         try {
-                            commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                            commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 4000 });
                         } catch (e) {}
 
                         if (commentInput) {

@@ -37,7 +37,7 @@ async function main() {
 
         console.log('ボードの読み込みを確認しました！');
 
-        // 外側ループ：全カードに対して「1回目」と「2回目」のラウンドを回す
+        // 各カード（セクション）に対して確実に「2回ずつ」投稿する
         const TOTAL_ROUNDS = 2;
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
@@ -45,33 +45,40 @@ async function main() {
             console.log(`⚡ 【全体巡回：投稿 ${round}回目】開始`);
             console.log(`============================`);
 
-            // その時点での最新のコメント追加ボタンをすべて取得
-            const buttons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-            console.log(`検出されたターゲット数: ${buttons.length}件`);
+            // ページ内にあるすべてのカード（セクションのコンテナ、または投稿ブロック）の数を最初に取得
+            const cards = await page.$$('div.post, div[data-section-id], article, li, div.relative.flex.flex-col');
+            
+            // もしカード単位のセレクタが取れなければ、コメント追加ボタン自体をベースにする
+            let commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+            console.log(`検出されたターゲット数: ${commentButtons.length}件`);
 
-            if (buttons.length === 0) {
+            if (commentButtons.length === 0) {
                 console.log('コメント追加ボタンが見つかりませんでした。');
                 break;
             }
 
-            // 内側ループ：見つかったカードを1つずつ順番に処理
-            for (let i = 0; i < buttons.length; i++) {
+            // 1つずつ確実に順番に処理していく
+            for (let i = 0; i < commentButtons.length; i++) {
                 try {
-                    console.log(`\n📍 カード ${i + 1} / ${buttons.length} への投稿処理中...`);
+                    console.log(`\n📍 カード ${i + 1} / ${commentButtons.length} への投稿処理中...`);
                     
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // DOMの変化に備えて毎回ボタンを再取得
-                    const currentBtns = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                    if (!currentBtns[i]) {
+                    // 毎回ボタンの配列を再取得して、インデックスのズレを防ぐ
+                    const freshButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+                    
+                    if (!freshButtons[i]) {
                         console.log(`⚠️ カード ${i + 1} のボタンが見つからないためスキップします。`);
                         continue;
                     }
 
-                    const targetBtn = currentBtns[i];
+                    const targetBtn = freshButtons[i];
+
+                    // 画面内に確実にスクロールして表示させる
                     await targetBtn.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(500);
+                    await page.waitForTimeout(800);
+
                     await targetBtn.click();
                     await page.waitForTimeout(1500);
 
@@ -99,7 +106,7 @@ async function main() {
                         // 送信（Enterキー）
                         await page.keyboard.press('Enter');
                         console.log('  🚀 送信しました！');
-                        await page.waitForTimeout(2500);
+                        await page.waitForTimeout(3000);
 
                         // ゲスト名の自動入力ポップアップ対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');

@@ -24,79 +24,78 @@ async function main() {
     const page = await context.newPage();
 
     try {
-        console.log('Target URLにアクセス中...');
         if (!TARGET_BOARD_URL) {
             throw new Error('TARGET_URLが指定されていません。');
         }
 
+        console.log('Padletボードへアクセス中...');
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(4000); // ページの描画をしっかり待つ
         await page.screenshot({ path: 'screenshot-01-loaded.png', fullPage: true });
 
-        // 2回コメント＆画像投稿を実行
-        const TOTAL_ROUNDS = 2; 
+        // コメント＆画像を2回投稿する
+        const TOTAL_ROUNDS = 2;
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n⚡ 【コメント投稿 ${round}回目】開始`);
 
             try {
-                // モーダル等を閉じるためEsc
+                // モップアップや余計なモーダルを閉じる
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
-                // 1. ページ内から「+ Add comment」または「コメントを追加」の要素を安全に取得してクリック
-                const clicked = await page.evaluate((rIdx) => {
-                    const elements = Array.from(document.querySelectorAll('button, div, span, a'));
-                    const commentTriggers = elements.filter(el => {
-                        const text = (el.innerText || el.textContent || '').trim();
-                        return text === '+ Add comment' || text === 'コメントを追加' || text.includes('Add comment');
-                    });
+                // 「Add comment」または「コメントを追加」というテキストを持つ要素をすべて取得
+                const commentTriggers = page.locator('text="Add comment", text="コメントを追加"');
+                const count = await commentTriggers.count();
+                console.log(`検出されたコメント追加ボタンの数: ${count}`);
 
-                    if (commentTriggers.length > 0) {
-                        // ループ回数に応じて異なるカードのコメント欄を狙う
-                        const target = commentTriggers[(rIdx - 1) % commentTriggers.length];
-                        target.click();
-                        return true;
-                    }
-                    return false;
-                }, round);
-
-                await page.waitForTimeout(1000);
-                await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
-
-                if (!clicked) {
-                    console.log(`[警告] 第 ${round} 回目：コメント追加ボタンが見つかりませんでした。`);
-                    await page.screenshot({ path: `screenshot-r${round}-10-failed.png`, fullPage: true });
+                if (count === 0) {
+                    console.log('コメント追加ボタンが見つかりませんでした。');
+                    await page.screenshot({ path: `screenshot-r${round}-error.png`, fullPage: true });
                     continue;
                 }
 
-                // 2. コメント入力欄（contenteditable または textarea）の出現を待つ
-                const commentInput = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 6000 });
-                if (commentInput) {
-                    await commentInput.click();
-                    await commentInput.fill(MESSAGE);
-                    await page.waitForTimeout(500);
-                    await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
+                // ラウンドに応じて順番に異なるカードのコメント欄を狙う
+                const targetIndex = (round - 1) % count;
+                const targetButton = commentTriggers.nth(targetIndex);
 
-                    // 3. 画像ファイルが存在する場合はアップロード
-                    if (fs.existsSync(IMAGE_PATH)) {
-                        const fileInput = await page.$('input[type="file"]');
-                        if (fileInput) {
-                            await fileInput.setInputFiles(IMAGE_PATH);
-                            await page.waitForTimeout(2000); // プレビュー・アップロード待ち
-                            await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
-                        }
-                    }
+                // 画面内までスクロールして確実にクリック
+                await targetButton.scrollIntoViewIfNeeded();
+                await targetButton.click();
+                console.log(`${targetIndex + 1}番目のコメント追加ボタンをクリックしました。`);
 
-                    // 4. 送信ボタン（Publish / コメント / 送信など）をクリック
-                    const submitBtn = await page.waitForSelector('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]', { state: 'visible', timeout: 5000 });
-                    if (submitBtn) {
-                        await submitBtn.click();
-                        await page.waitForTimeout(3000); // 投稿完了待ち
-                        console.log(`[成功] 第 ${round} 回：コメント＆画像の送信が完了しました！`);
-                        await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
+                await page.waitForTimeout(1500); // インライン入力欄が開くのを待つ
+                await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
+
+                // コメント入力欄（contenteditable または textarea）の出現を待機
+                const editor = page.locator('div[contenteditable="true"], textarea').first();
+                await editor.waitFor({ state: 'visible', timeout: 6000 });
+
+                // メッセージを入力
+                await editor.click();
+                await editor.fill(MESSAGE);
+                await page.waitForTimeout(500);
+                await page.screenshot({ path: `screenshot-r${round}-07-comment-filled.png`, fullPage: true });
+
+                // 画像ファイルが存在する場合はアップロード
+                if (fs.existsSync(IMAGE_PATH)) {
+                    const fileInput = page.locator('input[type="file"]');
+                    if (await fileInput.count() > 0) {
+                        await fileInput.setInputFiles(IMAGE_PATH);
+                        console.log('画像を添付しました。');
+                        await page.waitForTimeout(2000); // プレビューの読み込み待ち
+                        await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
                     }
                 }
+
+                // 送信ボタン（Publish / コメント / 送信など）をクリック
+                const submitBtn = page.locator('button:has-text("Publish"), button:has-text("コメント"), [data-testid="comment-submit"], button[aria-label*="送信"], button[aria-label*="投稿"]').first();
+                await submitBtn.waitFor({ state: 'visible', timeout: 5000 });
+                await submitBtn.click();
+                console.log(`[成功] 第 ${round} 回：コメント＆画像の送信が完了しました！`);
+
+                await page.waitForTimeout(3000); // 投稿完了の同期を待つ
+                await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
 
             } catch (err) {
                 console.log(`第 ${round} 回目でエラーが発生しました:`, err.message);

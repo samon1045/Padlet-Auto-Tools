@@ -9,7 +9,7 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// 画面上に残ったポップアップやメニューを完全に排除する強力なヘルパー
+// 画面上のあらゆるポップアップ、オーバーレイ、アラートを徹底的に消し去る最強ヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
@@ -17,7 +17,8 @@ async function dismissAllModals(page) {
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('.oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], .fixed.inset-0');
+            // アラート、オーバーレイ、ポップオーバーをすべて強制非表示または削除
+            const overlays = document.querySelectorAll('.oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
             overlays.forEach(el => {
                 if (!el.closest('.board-container') && !el.closest('main')) {
                     el.style.display = 'none';
@@ -29,24 +30,23 @@ async function dismissAllModals(page) {
     await page.waitForTimeout(300);
 }
 
-// 🖼️ 確実に画像をアップロードするための共通関数
+// 🖼️ 確実に画像をアップロードするための堅牢な共通関数
 async function attachImage(page) {
     if (!fs.existsSync(IMAGE_PATH)) return;
 
     try {
-        // 1. 添付用ボタン（「＋」アイコン、📎、あるいはファイル追加ボタン）を探してクリック
+        // 1. 添付用ボタン（「＋」アイコン、📎、ファイル追加など）を探す
         const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
             await page.waitForTimeout(1000);
         }
 
-        // 2. メニュー内の「Upload」ボタンまたは hidden の input[type="file"] を探す
+        // 2. メニュー内の「Upload」ボタンを探してクリック（filechooserを待機）
         const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"]');
         if (uploadOption) {
-            // file chooserを待機しながらUploadをクリック
             const [fileChooser] = await Promise.all([
-                page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null),
+                page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null),
                 uploadOption.click({ force: true })
             ]);
             if (fileChooser) {
@@ -57,7 +57,7 @@ async function attachImage(page) {
             }
         }
 
-        // 3. 直接 input[type="file"] が存在する場合
+        // 3. 直接存在する input[type="file"] を強制操作
         const fileInputs = await page.$$('input[type="file"]');
         if (fileInputs.length > 0) {
             const targetFileInput = fileInputs[fileInputs.length - 1];
@@ -66,7 +66,7 @@ async function attachImage(page) {
             await page.waitForTimeout(3000);
         }
     } catch (err) {
-        console.log('  ⚠️ 画像添付中に軽微なスキップが発生しました:', err.message);
+        console.log('  ⚠️ 画像添付スキップ:', err.message);
     }
 }
 
@@ -103,85 +103,91 @@ async function main() {
         await page.screenshot({ path: 'screenshot-loaded.png', fullPage: true });
 
         // ==========================================
-        // 1. 各セクションに「校則」の新規投稿を作成
+        // 1. 各セクションに「校則」の新規投稿を作成（2回ずつ実行）
         // ==========================================
         console.log('\n============================');
-        console.log('📂 【校則の新規投稿作成】開始');
+        console.log('📂 【校則の新規投稿作成（2回ずつ）】開始');
         console.log('============================');
 
-        const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-        console.log(`検出されたセクション追加ボタン数: ${addButtons.length}件`);
+        const TOPIC_ROUNDS = 2; // 新規投稿を各セクション2回行う
 
-        for (let i = 0; i < addButtons.length; i++) {
-            try {
-                await dismissAllModals(page);
-                console.log(`\n📍 [セクション ${i + 1} / ${addButtons.length}] に校則の新規投稿を作成中...`);
-                
-                const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                const targetAddBtn = freshAddBtns[i];
+        for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
+            console.log(`\n--- 新規投稿 ラウンド ${tRound}回目 ---`);
+            const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+            console.log(`検出されたセクション追加ボタン数: ${addButtons.length}件`);
 
-                if (!targetAddBtn) continue;
+            for (let i = 0; i < addButtons.length; i++) {
+                try {
+                    await dismissAllModals(page);
+                    console.log(`\n📍 [セクション ${i + 1} / ${addButtons.length}] に校則の新規投稿を作成中...`);
+                    
+                    const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                    const targetAddBtn = freshAddBtns[i];
 
-                await targetAddBtn.scrollIntoViewIfNeeded();
-                await page.waitForTimeout(500);
-                await targetAddBtn.click({ force: true });
-                await page.waitForTimeout(1500);
+                    if (!targetAddBtn) continue;
 
-                // タイトル入力欄
-                const titleInput = await page.$('input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
-                if (titleInput && await titleInput.isVisible()) {
-                    await titleInput.fill(TOPIC_TITLE);
-                    console.log(`  ✍️ タイトル入力: ${TOPIC_TITLE}`);
-                    await page.waitForTimeout(300);
-                }
-
-                // メッセージ（本文）入力欄
-                const bodyEditor = await page.$('div[contenteditable="true"], textarea');
-                if (bodyEditor) {
-                    await bodyEditor.focus();
-                    await bodyEditor.click();
-                    await page.keyboard.insertText(TOPIC_MESSAGE);
-                    console.log(`  ✍️ メッセージ入力: ${TOPIC_MESSAGE}`);
+                    await targetAddBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
-                }
-
-                // 🖼️ 新規投稿への画像添付を実行
-                await attachImage(page);
-
-                // 公開（Publish）
-                const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
-                if (publishBtn && await publishBtn.isVisible()) {
-                    await publishBtn.click({ force: true });
-                } else {
-                    await page.keyboard.press('Enter');
-                }
-                console.log('  🚀 校則の新規投稿を公開しました！');
-                await page.waitForTimeout(3500);
-
-                await page.screenshot({ path: `screenshot-topic-sec${i + 1}.png`, fullPage: true });
-
-                const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
-                const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
-                if (nameInput && doneBtn && await nameInput.isVisible()) {
-                    await nameInput.fill('さーもん bot');
-                    await doneBtn.click({ force: true });
+                    await targetAddBtn.click({ force: true });
                     await page.waitForTimeout(1500);
-                }
 
-            } catch (err) {
-                console.log(`⚠️ セクション ${i + 1} の新規投稿作成中にエラー:`, err.message);
-                await page.screenshot({ path: `screenshot-error-sec${i + 1}.png`, fullPage: true });
-            } finally {
-                await dismissAllModals(page);
+                    // タイトル入力欄
+                    const titleInput = await page.$('input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
+                    if (titleInput && await titleInput.isVisible()) {
+                        await titleInput.fill(TOPIC_TITLE);
+                        console.log(`  ✍️ タイトル入力: ${TOPIC_TITLE}`);
+                        await page.waitForTimeout(300);
+                    }
+
+                    // メッセージ（本文）入力欄
+                    const bodyEditor = await page.$('div[contenteditable="true"], textarea');
+                    if (bodyEditor) {
+                        await bodyEditor.focus();
+                        await bodyEditor.click();
+                        await page.keyboard.insertText(TOPIC_MESSAGE);
+                        console.log(`  ✍️ メッセージ入力: ${TOPIC_MESSAGE}`);
+                        await page.waitForTimeout(500);
+                    }
+
+                    // 🖼️ 画像添付を実行
+                    await attachImage(page);
+
+                    // 公開（Publish）
+                    const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
+                    if (publishBtn && await publishBtn.isVisible()) {
+                        await publishBtn.click({ force: true });
+                    } else {
+                        await page.keyboard.press('Enter');
+                    }
+                    console.log('  🚀 校則の新規投稿を公開しました！');
+                    await page.waitForTimeout(3500);
+
+                    await page.screenshot({ path: `screenshot-topic-r${tRound}-sec${i + 1}.png`, fullPage: true });
+
+                    // ゲスト名入力を求めるポップアップへの自動対応
+                    const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
+                    const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
+                    if (nameInput && doneBtn && await nameInput.isVisible()) {
+                        await nameInput.fill('さーもん bot');
+                        await doneBtn.click({ force: true });
+                        await page.waitForTimeout(1500);
+                    }
+
+                } catch (err) {
+                    console.log(`⚠️ セクション ${i + 1} の新規投稿作成中にエラー:`, err.message);
+                    await page.screenshot({ path: `screenshot-error-topic-sec${i + 1}.png`, fullPage: true });
+                } finally {
+                    await dismissAllModals(page);
+                }
             }
         }
 
         // ==========================================
-        // 2. コメント巡回
+        // 2. コメント巡回（2回ずつ実行）
         // ==========================================
-        const TOTAL_ROUNDS = 2;
+        const COMMENT_ROUNDS = 2;
 
-        for (let round = 1; round <= TOTAL_ROUNDS; round++) {
+        for (let round = 1; round <= COMMENT_ROUNDS; round++) {
             console.log(`\n============================`);
             console.log(`⚡ 【コメント巡回：投稿 ${round}回目】開始`);
             console.log(`============================`);

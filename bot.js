@@ -9,12 +9,17 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// 画面上に残ったポップアップや詳細ビューをEscape連打で完全に排除する
+// 画面上のあらゆるポップオーバーやメニューを強制的に閉じる最強ヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(250);
+        await page.waitForTimeout(200);
     }
+    // 画面の何もない背景部分をクリックしてポップオーバーのフォーカスを外す
+    try {
+        await page.mouse.click(10, 10);
+    } catch (e) {}
+    await page.waitForTimeout(300);
 }
 
 async function main() {
@@ -133,7 +138,7 @@ async function main() {
         }
 
         // ==========================================
-        // 2. コメント巡回（拡大ビュー・オーバーレイを完全に毎回排除）
+        // 2. コメント巡回（ポップオーバーやオーバーレイを毎回確実に排除）
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -175,11 +180,10 @@ async function main() {
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
 
-                    // force: trueで確実にクリック
+                    // force: true でオーバーレイを貫通してクリック
                     await targetBtn.click({ force: true });
                     await page.waitForTimeout(1500);
 
-                    // もしカードの詳細拡大画面が開いてしまったら、一度Escapeを押して中身のコメント欄を出すか、入力欄を探す
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
                         editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);

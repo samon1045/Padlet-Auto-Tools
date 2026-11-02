@@ -9,15 +9,14 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// 画面上のあらゆるポップオーバーやメニューを強制的に閉じる最強ヘルパー
+// 画面上に残ったポップオーバーやメニューを完全に排除する強力なヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
     }
-    // 画面の何もない背景部分をクリックしてポップオーバーのフォーカスを外す
     try {
-        await page.mouse.click(10, 10);
+        await page.mouse.click(5, 5);
     } catch (e) {}
     await page.waitForTimeout(300);
 }
@@ -94,17 +93,32 @@ async function main() {
                     await bodyEditor.click();
                     await page.keyboard.insertText(TOPIC_MESSAGE);
                     console.log(`  ✍️ メッセージ入力: ${TOPIC_MESSAGE}`);
-                    await page.waitForTimeout(300);
+                    await page.waitForTimeout(500);
                 }
 
-                // 画像の添付
+                // 【改善】画像の添付（確実にファイルをセットしてプレビュー読込を待つ）
                 if (fs.existsSync(IMAGE_PATH)) {
+                    // アップロード用のファイル入力を開くボタン等がある場合はそれを探すか、隠しファイル入力を直接操作
                     const fileInputs = await page.$$('input[type="file"]');
                     if (fileInputs.length > 0) {
                         const targetFileInput = fileInputs[fileInputs.length - 1];
                         await targetFileInput.setInputFiles(IMAGE_PATH);
-                        console.log('  🖼️ 新規投稿に画像を添付しました！');
-                        await page.waitForTimeout(2000);
+                        console.log('  🖼️ 新規投稿に画像を添付しました！アップロード待機中...');
+                        // 画像がクラウドやプレビューに反映されるまでしっかり待機（重要）
+                        await page.waitForTimeout(4000);
+                    } else {
+                        // もしファイル入力が直接見つからない場合、アップロードボタン（📎やアイコン）をクリックして出現させる
+                        const uploadBtn = await page.$('button[aria-label*="Upload"], button[aria-label*="ファイル"], button[data-testid*="Upload"]');
+                        if (uploadBtn) {
+                            await uploadBtn.click({ force: true });
+                            await page.waitForTimeout(1000);
+                            const newFileInputs = await page.$$('input[type="file"]');
+                            if (newFileInputs.length > 0) {
+                                await newFileInputs[newFileInputs.length - 1].setInputFiles(IMAGE_PATH);
+                                console.log('  🖼️ アップロードメニュー経由で画像を添付しました！');
+                                await page.waitForTimeout(4000);
+                            }
+                        }
                     }
                 }
 
@@ -116,7 +130,7 @@ async function main() {
                     await page.keyboard.press('Enter');
                 }
                 console.log('  🚀 校則の新規投稿を公開しました！');
-                await page.waitForTimeout(2500);
+                await page.waitForTimeout(3500);
 
                 await page.screenshot({ path: `screenshot-topic-sec${i + 1}.png`, fullPage: true });
 
@@ -138,7 +152,7 @@ async function main() {
         }
 
         // ==========================================
-        // 2. コメント巡回（ポップオーバーやオーバーレイを毎回確実に排除）
+        // 2. コメント巡回
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -180,7 +194,6 @@ async function main() {
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
 
-                    // force: true でオーバーレイを貫通してクリック
                     await targetBtn.click({ force: true });
                     await page.waitForTimeout(1500);
 
@@ -203,7 +216,7 @@ async function main() {
                                 const targetFileInput = fileInputs[fileInputs.length - 1];
                                 await targetFileInput.setInputFiles(IMAGE_PATH);
                                 console.log('  🖼️ コメントに画像を添付しました！');
-                                await page.waitForTimeout(2000);
+                                await page.waitForTimeout(2500);
                             }
                         }
 
@@ -213,7 +226,6 @@ async function main() {
 
                         await page.screenshot({ path: `screenshot-r${round}-card${processedCount + 1}.png`, fullPage: true });
 
-                        // ゲスト名入力を求めるポップアップへの自動対応
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                         const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                         if (nameInput && doneBtn && await nameInput.isVisible()) {

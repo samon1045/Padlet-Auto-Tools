@@ -20,10 +20,6 @@ async function main() {
     const context = await browser.newContext(
         hasStorageState ? { storageState: 'auth.json' } : {}
     );
-
-    // ★ クリップボードの読み書き権限を自動的に許可する設定を追加
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-
     const page = await context.newPage();
 
     try {
@@ -65,33 +61,30 @@ async function main() {
                 await commentButtons[targetIndex].click();
                 await page.waitForTimeout(1500);
 
-                // 2. メッセージ入力欄を取得
+                // 2. メッセージ入力欄を取得してテキストを入力
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
                 if (editor) {
                     await editor.focus();
                     await editor.click();
 
-                    // メッセージを入力
                     await page.keyboard.insertText(MESSAGE);
                     console.log(`メッセージを入力しました: ${MESSAGE}`);
                     await page.waitForTimeout(500);
 
-                    // 3. 権限が許可されたクリップボード経由で画像を貼り付け
+                    // 3. GIF画像をファイル入力要素（input[type="file"]）経由で添付
                     if (fs.existsSync(IMAGE_PATH)) {
-                        console.log('画像をクリップボード経由で貼り付け中...');
-                        const imageBuffer = fs.readFileSync(IMAGE_PATH);
-                        
-                        await page.evaluate(async (imgBase64) => {
-                            const res = await fetch(`data:image/gif;base64,${imgBase64}`);
-                            const blob = await res.blob();
-                            await navigator.clipboard.write([
-                                new ClipboardItem({ 'image/gif': blob })
-                            ]);
-                        }, imageBuffer.toString('base64'));
-
-                        await editor.focus();
-                        await page.keyboard.press('Control+V');
-                        await page.waitForTimeout(2500);
+                        console.log('ファイルをアップロード中...');
+                        // Padlet内にあるすべてのファイルアップロード用 input を探索
+                        const fileInputs = await page.$$('input[type="file"]');
+                        if (fileInputs.length > 0) {
+                            // 最も適切なファイル入力要素（最後の要素）にセット
+                            const targetFileInput = fileInputs[fileInputs.length - 1];
+                            await targetFileInput.setInputFiles(IMAGE_PATH);
+                            console.log('画像を添付しました！');
+                            await page.waitForTimeout(3000); // プレビューの読み込み待ち
+                        } else {
+                            console.log('⚠️ input[type="file"]が見つかりませんでした。');
+                        }
                     }
 
                     // 4. 送信ボタンをクリック、またはEnterキー

@@ -37,21 +37,23 @@ async function main() {
 
         console.log('ボードの読み込みを確認しました！');
 
-        // 1. ページ内にある「+ Add comment」または「コメントを追加」ボタンをすべて取得
-        const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-        console.log(`検出されたコメント追加ボタン: ${commentButtons.length}件`);
+        // 初めに検出されたボタンの総数を取得
+        const initialButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+        const totalCards = initialButtons.length;
+        console.log(`検出されたコメント追加ボタン（カード数）: ${totalCards}件`);
 
-        if (commentButtons.length === 0) {
+        if (totalCards === 0) {
             console.log('コメント追加ボタンが見つかりませんでした。');
             return;
         }
 
-        // 2. すべてのセクション（ボタン）に対して、それぞれの場所で「2回ずつ」投稿を繰り返す
-        for (let i = 0; i < commentButtons.length; i++) {
+        // 各カードに対して順番に処理を行う
+        for (let i = 0; i < totalCards; i++) {
             console.log(`\n============================`);
-            console.log(`📍 【セクション・カード ${i + 1} / ${commentButtons.length}】への投稿処理`);
+            console.log(`📍 【セクション・カード ${i + 1} / ${totalCards}】への投稿処理`);
             console.log(`============================`);
 
+            // 各カードに対して「2回」投稿を繰り返す
             for (let round = 1; round <= 2; round++) {
                 console.log(`\n⚡ ↳ 【${i + 1}番目のカード：投稿 ${round}回目】開始`);
 
@@ -59,10 +61,11 @@ async function main() {
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // ページ再描画や要素の変化に対応するため、毎回ボタンを再取得してクリック
+                    // DOMの変化に対応するため、毎回最新のボタンリストを再取得する
                     const currentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+                    
                     if (!currentButtons[i]) {
-                        console.log(`⚠️ ${i + 1}番目のボタンが見つからないためスキップします。`);
+                        console.log(`⚠️ ${i + 1}番目のコメント追加ボタンが見つからないためスキップします。`);
                         break;
                     }
 
@@ -89,7 +92,7 @@ async function main() {
                                 const targetFileInput = fileInputs[fileInputs.length - 1];
                                 await targetFileInput.setInputFiles(IMAGE_PATH);
                                 console.log('画像を添付しました！');
-                                await page.waitForTimeout(2500); // プレビューの読み込み待ち
+                                await page.waitForTimeout(2500);
                             }
                         }
 

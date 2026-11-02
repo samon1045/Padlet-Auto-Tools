@@ -37,92 +37,91 @@ async function main() {
 
         console.log('ボードの読み込みを確認しました！');
 
-        // コメント＆画像投稿を2回実行
-        const TOTAL_ROUNDS = 2;
+        // 1. ページ内にある「+ Add comment」または「コメントを追加」ボタンをすべて取得
+        const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+        console.log(`検出されたコメント追加ボタン: ${commentButtons.length}件`);
 
-        for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-            console.log(`\n⚡ 【コメント投稿 ${round}回目】開始`);
+        if (commentButtons.length === 0) {
+            console.log('コメント追加ボタンが見つかりませんでした。');
+            return;
+        }
 
-            try {
-                await page.keyboard.press('Escape');
-                await page.waitForTimeout(500);
+        // 2. すべてのセクション（ボタン）に対して、それぞれの場所で「2回ずつ」投稿を繰り返す
+        for (let i = 0; i < commentButtons.length; i++) {
+            console.log(`\n============================`);
+            console.log(`📍 【セクション・カード ${i + 1} / ${commentButtons.length}】への投稿処理`);
+            console.log(`============================`);
 
-                // 1. 投稿の「+ Add comment」ボタンを取得してクリック
-                const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                console.log(`検出されたコメント追加ボタン: ${commentButtons.length}件`);
+            for (let round = 1; round <= 2; round++) {
+                console.log(`\n⚡ ↳ 【${i + 1}番目のカード：投稿 ${round}回目】開始`);
 
-                if (commentButtons.length === 0) {
-                    console.log('コメント追加ボタンが見つかりませんでした。');
-                    continue;
-                }
-
-                const targetIndex = (round - 1) % commentButtons.length;
-                await commentButtons[targetIndex].scrollIntoViewIfNeeded();
-                await commentButtons[targetIndex].click();
-                await page.waitForTimeout(1500);
-
-                // 2. メッセージ入力欄を取得してテキストを入力
-                const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
-                if (editor) {
-                    await editor.focus();
-                    await editor.click();
-
-                    await page.keyboard.insertText(MESSAGE);
-                    console.log(`メッセージを入力しました: ${MESSAGE}`);
+                try {
+                    await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // 3. GIF画像をファイル入力要素（input[type="file"]）経由で添付
-                    if (fs.existsSync(IMAGE_PATH)) {
-                        console.log('ファイルをアップロード中...');
-                        // Padlet内にあるすべてのファイルアップロード用 input を探索
-                        const fileInputs = await page.$$('input[type="file"]');
-                        if (fileInputs.length > 0) {
-                            // 最も適切なファイル入力要素（最後の要素）にセット
-                            const targetFileInput = fileInputs[fileInputs.length - 1];
-                            await targetFileInput.setInputFiles(IMAGE_PATH);
-                            console.log('画像を添付しました！');
-                            await page.waitForTimeout(3000); // プレビューの読み込み待ち
-                        } else {
-                            console.log('⚠️ input[type="file"]が見つかりませんでした。');
-                        }
+                    // ページ再描画や要素の変化に対応するため、毎回ボタンを再取得してクリック
+                    const currentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
+                    if (!currentButtons[i]) {
+                        console.log(`⚠️ ${i + 1}番目のボタンが見つからないためスキップします。`);
+                        break;
                     }
 
-                    // 4. 送信ボタンをクリック、またはEnterキー
-                    const submitBtn = await page.$('button[aria-label*="送信"], button[aria-label*="投稿"], button.bg-pink-500, button:has(svg.lucide-arrow-right), button:has(svg.lucide-send)');
-                    
-                    if (submitBtn && await submitBtn.isVisible()) {
-                        await submitBtn.click();
-                        console.log(` -> 第 ${round} 回：送信ボタンをクリックしました！`);
-                    } else {
-                        await page.keyboard.press('Enter');
-                        console.log(` -> 第 ${round} 回：Enterキーで送信しました！`);
-                    }
+                    const targetBtn = currentButtons[i];
+                    await targetBtn.scrollIntoViewIfNeeded();
+                    await targetBtn.click();
+                    await page.waitForTimeout(1500);
 
-                    await page.waitForTimeout(2000);
+                    // メッセージ入力欄の取得
+                    const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
+                    if (editor) {
+                        await editor.focus();
+                        await editor.click();
 
-                    // 5. ゲスト名入力を求めるポップアップの自動突破
-                    const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
-                    const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
-                    
-                    if (nameInput && doneBtn && await nameInput.isVisible()) {
-                        console.log('ゲスト名の入力を検知しました。自動入力します...');
-                        await nameInput.fill('さーもん bot');
+                        // メッセージを入力
+                        await page.keyboard.insertText(MESSAGE);
+                        console.log(`メッセージを入力しました: ${MESSAGE}`);
                         await page.waitForTimeout(500);
-                        await doneBtn.click();
-                        console.log('名前を登録して完了しました！');
-                        await page.waitForTimeout(2000);
+
+                        // GIF画像をアップロード（input[type="file"]経由）
+                        if (fs.existsSync(IMAGE_PATH)) {
+                            const fileInputs = await page.$$('input[type="file"]');
+                            if (fileInputs.length > 0) {
+                                const targetFileInput = fileInputs[fileInputs.length - 1];
+                                await targetFileInput.setInputFiles(IMAGE_PATH);
+                                console.log('画像を添付しました！');
+                                await page.waitForTimeout(2500); // プレビューの読み込み待ち
+                            }
+                        }
+
+                        // 送信（Enterキー送信）
+                        await page.keyboard.press('Enter');
+                        console.log(' -> Enterキーで送信しました！');
+                        await page.waitForTimeout(2500);
+
+                        // ゲスト名入力を求めるポップアップ（"What should we call you?"）への自動対応
+                        const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
+                        const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
+                        
+                        if (nameInput && doneBtn && await nameInput.isVisible()) {
+                            console.log('ゲスト名の入力を検知しました。自動入力します...');
+                            await nameInput.fill('さーもん bot');
+                            await page.waitForTimeout(500);
+                            await doneBtn.click();
+                            console.log('名前を登録して完了しました！');
+                            await page.waitForTimeout(2000);
+                        }
+
+                        console.log(`  ✨ ${i + 1}番目のカードへの投稿（${round}回目）が完了しました！`);
                     }
 
-                    console.log(`  ✨ 第 ${round} 回目のコメント＆画像送信が完了しました！`);
+                } catch (err) {
+                    console.log(`⚠️ 投稿中にエラーが発生しました:`, err.message);
+                    await page.keyboard.press('Escape');
                 }
-
-            } catch (secErr) {
-                console.log(`第 ${round} 回目でエラーが発生しました:`, secErr.message);
-                await page.keyboard.press('Escape');
             }
         }
 
-        console.log('\n🎉 全ての処理が完了しました！');
+        console.log('\n🎉 全てのセクションへの投稿処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
 
     } catch (error) {

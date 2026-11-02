@@ -9,18 +9,16 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませ
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
-// 画面上に残ったポップアップやメニューをキーボード、クリック、さらにDOM強制削除で完全に排除する
+// 画面上に残ったポップアップやメニューを完全に排除する強力なヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(150);
     }
     try {
-        // 画面上のポップアップやオーバーレイ、モーダルを強制的に隠す（DOM削除/非表示）
         await page.evaluate(() => {
             const overlays = document.querySelectorAll('.oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], .fixed.inset-0');
             overlays.forEach(el => {
-                // ボード本体やメインUI以外を隠す
                 if (!el.closest('.board-container') && !el.closest('main')) {
                     el.style.display = 'none';
                 }
@@ -29,6 +27,47 @@ async function dismissAllModals(page) {
         await page.mouse.click(5, 5);
     } catch (e) {}
     await page.waitForTimeout(300);
+}
+
+// 🖼️ 確実に画像をアップロードするための共通関数
+async function attachImage(page) {
+    if (!fs.existsSync(IMAGE_PATH)) return;
+
+    try {
+        // 1. 添付用ボタン（「＋」アイコン、📎、あるいはファイル追加ボタン）を探してクリック
+        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
+        if (attachTrigger) {
+            await attachTrigger.click({ force: true });
+            await page.waitForTimeout(1000);
+        }
+
+        // 2. メニュー内の「Upload」ボタンまたは hidden の input[type="file"] を探す
+        const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"]');
+        if (uploadOption) {
+            // file chooserを待機しながらUploadをクリック
+            const [fileChooser] = await Promise.all([
+                page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null),
+                uploadOption.click({ force: true })
+            ]);
+            if (fileChooser) {
+                await fileChooser.setFiles(IMAGE_PATH);
+                console.log('  🖼️ ファイルチューザー経由で画像を添付しました！');
+                await page.waitForTimeout(3000);
+                return;
+            }
+        }
+
+        // 3. 直接 input[type="file"] が存在する場合
+        const fileInputs = await page.$$('input[type="file"]');
+        if (fileInputs.length > 0) {
+            const targetFileInput = fileInputs[fileInputs.length - 1];
+            await targetFileInput.setInputFiles(IMAGE_PATH);
+            console.log('  🖼️ input[type="file"] 経由で画像を添付しました！');
+            await page.waitForTimeout(3000);
+        }
+    } catch (err) {
+        console.log('  ⚠️ 画像添付中に軽微なスキップが発生しました:', err.message);
+    }
 }
 
 async function main() {
@@ -106,16 +145,8 @@ async function main() {
                     await page.waitForTimeout(500);
                 }
 
-                // 画像の添付（確実に待機）
-                if (fs.existsSync(IMAGE_PATH)) {
-                    const fileInputs = await page.$$('input[type="file"]');
-                    if (fileInputs.length > 0) {
-                        const targetFileInput = fileInputs[fileInputs.length - 1];
-                        await targetFileInput.setInputFiles(IMAGE_PATH);
-                        console.log('  🖼️ 新規投稿に画像を添付しました！アップロード待機中...');
-                        await page.waitForTimeout(4000);
-                    }
-                }
+                // 🖼️ 新規投稿への画像添付を実行
+                await attachImage(page);
 
                 // 公開（Publish）
                 const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
@@ -146,7 +177,7 @@ async function main() {
         }
 
         // ==========================================
-        // 2. コメント巡回（オーバーレイ強制非表示対応）
+        // 2. コメント巡回
         // ==========================================
         const TOTAL_ROUNDS = 2;
 
@@ -188,7 +219,6 @@ async function main() {
                     await targetBtn.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
 
-                    // force: true でオーバーレイを完全に無視してクリック
                     await targetBtn.click({ force: true });
                     await page.waitForTimeout(1500);
 
@@ -205,15 +235,8 @@ async function main() {
                         console.log(`  ✍️ コメント入力: ${COMMENT_MESSAGE}`);
                         await page.waitForTimeout(300);
 
-                        if (fs.existsSync(IMAGE_PATH)) {
-                            const fileInputs = await page.$$('input[type="file"]');
-                            if (fileInputs.length > 0) {
-                                const targetFileInput = fileInputs[fileInputs.length - 1];
-                                await targetFileInput.setInputFiles(IMAGE_PATH);
-                                console.log('  🖼️ コメントに画像を添付しました！');
-                                await page.waitForTimeout(2500);
-                            }
-                        }
+                        // 🖼️ コメントへの画像添付を実行
+                        await attachImage(page);
 
                         await page.keyboard.press('Enter');
                         console.log('  🚀 コメントを送信しました！');

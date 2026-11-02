@@ -1,11 +1,33 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const { GoogleGenAI } = require('@google/genai'); // Gemini API用
 
-// 📝 送信メッセージと画像パス
-const MESSAGE = process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
+
+// Gemini APIを使ったメッセージ生成関数
+async function generateMessageWithGemini() {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        // APIキーがない場合のフォールバック
+        return process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
+    }
+
+    try {
+        console.log('🤖 Gemini APIでメッセージを生成中...');
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: 'Padletの掲示板に投稿する、少しおふざけで盛り上げるための短いメッセージ（例：「おまえらやりませんねぇ杉！！」など）を1つだけ、余計な解説なしで生成してください。',
+        });
+        const text = response.text ? response.text.trim() : '';
+        return text || 'おまえらやりませんねぇ杉！！';
+    } catch (err) {
+        console.log('Gemini APIの呼び出しに失敗しました。デフォルトメッセージを使います:', err.message);
+        return process.env.CUSTOM_MESSAGE || 'おまえらやりませんねぇ杉！！';
+    }
+}
 
 async function main() {
     if (process.env.AUTH_JSON) {
@@ -37,7 +59,6 @@ async function main() {
         }
 
         console.log('ボードの読み込みを確認しました！');
-        await page.screenshot({ path: 'screenshot-01-loaded.png', fullPage: true });
 
         // コメント＆画像投稿を2回実行
         const TOTAL_ROUNDS = 2;
@@ -46,74 +67,87 @@ async function main() {
             console.log(`\n⚡ 【コメント投稿 ${round}回目】開始`);
 
             try {
+                // モーダル等を閉じるためEsc
                 await page.keyboard.press('Escape');
                 await page.waitForTimeout(500);
 
-                // 1. 各投稿の「+ Add comment」や「コメントを追加」ボタンを取得
+                // 1. 投稿の「+ Add comment」ボタンを取得してクリック
                 const commentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
                 console.log(`検出されたコメント追加ボタン: ${commentButtons.length}件`);
 
                 if (commentButtons.length === 0) {
                     console.log('コメント追加ボタンが見つかりませんでした。');
-                    await page.screenshot({ path: `screenshot-r${round}-error.png`, fullPage: true });
                     continue;
                 }
 
                 const targetIndex = (round - 1) % commentButtons.length;
-                const targetBtn = commentButtons[targetIndex];
-
-                await targetBtn.scrollIntoViewIfNeeded();
-                await targetBtn.click();
+                await commentButtons[targetIndex].scrollIntoViewIfNeeded();
+                await commentButtons[targetIndex].click();
                 await page.waitForTimeout(1500);
-                await page.screenshot({ path: `screenshot-r${round}-06-after-comment-click.png`, fullPage: true });
 
-                // 2. メッセージ入力欄の取得
+                // 2. メッセージ入力欄を取得
                 const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
                 if (editor) {
                     await editor.focus();
                     await editor.click();
-                    
-                    // Padletの入力検知（Vue/Reactの状態更新）を動かすため1文字ずつキー入力
-                    await page.keyboard.insertText(MESSAGE);
-                    console.log('メッセージを入力しました。');
+
+                    // Gemini API（または環境変数）からメッセージを取得して入力
+                    const messageToPost = await generateMessageWithGemini();
+                    await page.keyboard.insertText(messageToPost);
+                    console.log(`メッセージを入力しました: ${messageToPost}`);
                     await page.waitForTimeout(500);
 
-                    // 3. 画像の添付（ボタンを押さずに直接 file input へ注入）
+                    // 3. 【新手法】画像をクリップボードに読み込ませて「貼り付け（Ctrl+V / Cmd+V）」する
                     if (fs.existsSync(IMAGE_PATH)) {
-                        const fileInputs = await page.$$('input[type="file"]');
-                        if (fileInputs.length > 0) {
-                            console.log('GIF画像をアップロード中...');
-                            // 最も末尾（現在選択中の入力欄に近いもの）または最初のfileInputにセット
-                            const targetFileInput = fileInputs[fileInputs.length - 1];
-                            await targetFileInput.setInputFiles(IMAGE_PATH);
-                            await page.waitForTimeout(3000); // アップロードとプレビューの待機
-                            await page.screenshot({ path: `screenshot-r${round}-08-comment-image-attached.png`, fullPage: true });
-                        }
+                        console.log('画像をクリップボード経由で貼り付け中...');
+                        const imageBuffer = fs.readFileSync(IMAGE_PATH);
+                        
+                        // ブラウザのクリップボードに画像を書き込む
+                        await page.evaluate(async (imgBase64) => {
+                            const res = await fetch(`data:image/gif;base64,${imgBase64}`);
+                            const blob = await res.blob();
+                            await navigator.clipboard.write([
+                                new ClipboardItem({ 'image/gif': blob })
+                            ]);
+                        }, imageBuffer.toString('base64'));
+
+                        // 入力欄にフォーカスを当てて貼り付けショートカットを実行
+                        await editor.focus();
+                        await page.keyboard.press('Control+V'); // Mac環境なら Meta+V
+                        await page.waitForTimeout(2500); // 貼り付けとプレビュー描画待ち
                     }
 
-                    // 4. 送信処理（Enterキー送信 ＋ ピンク矢印ボタンクリック）
-                    await page.screenshot({ path: `screenshot-r${round}-07-before-submit.png`, fullPage: true });
-
-                    // まずピンク色の矢印ボタンを探してクリックを試みる
+                    // 4. 送信ボタン（ピンクの矢印）をクリック、またはEnterキー
                     const submitBtn = await page.$('button[aria-label*="送信"], button[aria-label*="投稿"], button.bg-pink-500, button:has(svg.lucide-arrow-right), button:has(svg.lucide-send)');
                     
                     if (submitBtn && await submitBtn.isVisible()) {
                         await submitBtn.click();
-                        console.log(` -> 第 ${round} 回：ピンク色の送信ボタンをクリックしました！`);
+                        console.log(` -> 第 ${round} 回：送信ボタンをクリックしました！`);
                     } else {
-                        // ボタンが見つからない・押せない場合はEnterキーで送信
                         await page.keyboard.press('Enter');
                         console.log(` -> 第 ${round} 回：Enterキーで送信しました！`);
                     }
 
-                    await page.waitForTimeout(3000);
-                    await page.screenshot({ path: `screenshot-r${round}-09-comment-submitted.png`, fullPage: true });
-                    console.log('  ✨ コメント送信処理が完了しました！');
+                    await page.waitForTimeout(2000);
+
+                    // 5. ゲスト名入力を求めるポップアップ（"What should we call you?"）への自動対応
+                    const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
+                    const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
+                    
+                    if (nameInput && doneBtn && await nameInput.isVisible()) {
+                        console.log('ゲスト名の入力を検知しました。自動入力します...');
+                        await nameInput.fill('さーもん bot');
+                        await page.waitForTimeout(500);
+                        await doneBtn.click();
+                        console.log('名前を登録して完了しました！');
+                        await page.waitForTimeout(2000);
+                    }
+
+                    console.log(`  ✨ 第 ${round} 回目のコメント＆画像送信が完了しました！`);
                 }
 
             } catch (secErr) {
                 console.log(`第 ${round} 回目でエラーが発生しました:`, secErr.message);
-                await page.screenshot({ path: `screenshot-r${round}-error.png`, fullPage: true });
                 await page.keyboard.press('Escape');
             }
         }

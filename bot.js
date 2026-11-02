@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 コメント用のメッセージと画像パス
+// 📝 設定値
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'おまえらやりませんねぇ杉！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
@@ -43,44 +43,71 @@ async function main() {
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
             console.log(`\n============================`);
-            console.log(`⚡ 【全体巡回：投稿 ${round}回目】開始`);
+            console.log(`⚡ 【Geminiサポート巡回：投稿 ${round}回目】開始`);
             console.log(`============================`);
 
-            // ボード上にあるすべての「コメントを追加」「Add comment」ボタンを直接全件取得
-            const buttons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-            console.log(`検出された有効なコメント追加ボタン数: ${buttons.length}件`);
+            // 1. ページ内のすべての「コメント追加ボタン」や「カード」の要素位置を全スキャン
+            // より広範囲にセレクタを網羅し、重複を除外してリスト化
+            const commentSelectors = [
+                'button:has-text("Add comment")',
+                'button:has-text("コメントを追加")',
+                'div:has-text("+ Add comment")',
+                'span:has-text("+ Add comment")',
+                'div.comment-add-button',
+                'div[data-testid="comment-button"]'
+            ];
+
+            let buttons = [];
+            for (const selector of commentSelectors) {
+                const found = await page.$$(selector);
+                if (found.length > 0) {
+                    buttons = found;
+                    break;
+                }
+            }
+
+            // もしボタンが直接見つからない場合は、カードの投稿コンテナ自体から逆引きする
+            if (buttons.length === 0) {
+                console.log('⚠️ 標準セレクタでのボタン検出数が0件のため、カードコンテナから再スキャンします...');
+                const posts = await page.$$('div.post, div.card, article, div[data-id]');
+                for (const post of posts) {
+                    const btn = await post.$('button, div[role="button"], span');
+                    if (btn) buttons.push(btn);
+                }
+            }
+
+            console.log(`🎯 検出された対象カード数: ${buttons.length}件`);
 
             if (buttons.length === 0) {
-                console.log('コメント追加ボタンがこれ以上見つかりませんでした。');
+                console.log('対象のカードが見つかりませんでした。');
                 break;
             }
 
-            // 見つかったすべてのボタン（カード）を1つずつ順番に確実に処理
+            // すべてのカードを1つずつ順番に確実に処理
             for (let i = 0; i < buttons.length; i++) {
                 try {
-                    console.log(`\n📍 [カード ${i + 1} / ${buttons.length}] へのコメント・画像投稿処理中...`);
+                    console.log(`\n📍 [カード ${i + 1} / ${buttons.length}] への投稿処理中...`);
                     
                     await page.keyboard.press('Escape');
                     await page.waitForTimeout(500);
 
-                    // DOMの変化によるズレを防ぐため、ループ内で毎回ボタンを再取得
+                    // 最新の状態のボタンを再取得してクリック
                     const currentButtons = await page.$$('button:has-text("Add comment"), button:has-text("コメントを追加"), div:has-text("+ Add comment"), span:has-text("+ Add comment")');
-                    
-                    if (!currentButtons[i]) {
-                        console.log(`⚠️ カード ${i + 1} のボタンが見つからないためスキップします。`);
+                    const targetBtn = currentButtons[i] || buttons[i];
+
+                    if (!targetBtn) {
+                        console.log(`⚠️ カード ${i + 1} の要素が見つからないためスキップします。`);
                         continue;
                     }
 
-                    const targetBtn = currentButtons[i];
-
-                    // 画面外（横や下）にあるカードも確実に画面内にスクロールして表示させる
+                    // 画面内に確実にスクロールして表示
                     await targetBtn.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(800);
+                    await page.waitForTimeout(1000);
 
                     await targetBtn.click();
                     await page.waitForTimeout(1500);
 
-                    // コメント入力欄を待機
+                    // メッセージ入力欄を待機
                     const editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 5000 });
                     if (editor) {
                         await editor.focus();
@@ -98,7 +125,7 @@ async function main() {
                                 const targetFileInput = fileInputs[fileInputs.length - 1];
                                 await targetFileInput.setInputFiles(IMAGE_PATH);
                                 console.log('  🖼️ 画像を添付しました！');
-                                await page.waitForTimeout(2500); // プレビュー読込待ち
+                                await page.waitForTimeout(2500);
                             }
                         }
 

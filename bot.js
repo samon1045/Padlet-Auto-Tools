@@ -68,7 +68,10 @@ async function dismissAllModals(page) {
 
 // 🖼️ 新規投稿用の画像アップロード処理
 async function attachImageForTopic(page) {
-    if (!fs.existsSync(IMAGE_PATH)) return;
+    if (!fs.existsSync(IMAGE_PATH)) {
+        console.log('⚠️ アップロード用の画像ファイルが見つからないため、画像添付をスキップします:', IMAGE_PATH);
+        return;
+    }
 
     try {
         const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
@@ -80,12 +83,12 @@ async function attachImageForTopic(page) {
         const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"]');
         if (uploadOption) {
             const [fileChooser] = await Promise.all([
-                page.waitForEvent('filechooser', { timeout: 2000 }).catch(() => null),
+                page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null),
                 uploadOption.click({ force: true })
             ]);
             if (fileChooser) {
                 await fileChooser.setFiles(IMAGE_PATH);
-                await page.waitForTimeout(2500); // アップロード完了待ち
+                await page.waitForTimeout(2500);
                 return;
             }
         }
@@ -95,7 +98,9 @@ async function attachImageForTopic(page) {
             await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
             await page.waitForTimeout(2500);
         }
-    } catch (err) {}
+    } catch (err) {
+        console.log('⚠️ 画像の添付中に軽微なエラーが発生しました:', err.message);
+    }
 }
 
 async function main() {
@@ -122,7 +127,7 @@ async function main() {
     }
 
     if (authList.length === 0) {
-        console.log('⚠️ 有効なクッキーデータが見つかりません。');
+        console.log('⚠️ 有効なクッキーデータが見つかりません。AUTH_JSONS環境変数を確認してください。');
         process.exit(1);
     }
 
@@ -138,7 +143,7 @@ async function main() {
         try {
             const parsedCookies = JSON.parse(authData);
             const cleanedCookies = parsedCookies.map(cookie => {
-                if (cookie.sameSite === null || (cookie.sameSite !== 'Strict' && cookie.sameSite !== 'Lax' && cookie.sameSite !== 'None')) {
+                if (!cookie.sameSite || (cookie.sameSite !== 'Strict' && cookie.sameSite !== 'Lax' && cookie.sameSite !== 'None')) {
                     cookie.sameSite = 'Lax';
                 }
                 return cookie;
@@ -165,7 +170,8 @@ async function main() {
 
             await takeStepScreenshot(page, 'after-goto', accountNum);
 
-            if (page.url().includes('login') || page.url().includes('verify') || await page.$('text=registered users only')) {
+            const currentUrl = page.url();
+            if (currentUrl.includes('login') || currentUrl.includes('verify') || await page.$('text=registered users only')) {
                 throw new Error('クッキーの有効期限が切れているか、ログインしていません。');
             }
 
@@ -221,7 +227,7 @@ async function main() {
                             console.log(`✅ [セクション ${i + 1}] 投稿を公開しました！`);
                         }
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(2500);
+                        await page.waitForTimeout(3000);
 
                         if (i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
@@ -235,15 +241,15 @@ async function main() {
             }
 
             // ==========================================
-            // 2. コメント巡回（テキストのみで高速・確実に送信）
+            // 2. コメント巡回
             // ==========================================
-            const COMMENT_ROUNDS = 2;
+            const COMMENT_ROUNDS = 1;
 
             for (let round = 1; round <= COMMENT_ROUNDS; round++) {
                 console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);
                 let processedCount = 0;
 
-                while (processedCount < 30) { // 最大30件まで安全に巡回
+                while (processedCount < 15) {
                     await dismissAllModals(page);
 
                     const commentSelectors = [
@@ -254,36 +260,35 @@ async function main() {
                         'button[aria-label*="comment"]'
                     ];
 
-                    let targetBtn = null;
                     const foundBtns = await page.$$(commentSelectors.join(', '));
-                    if (processedCount < foundBtns.length) {
-                        targetBtn = foundBtns[processedCount];
-                    }
+                    if (processedCount >= foundBtns.length) break;
 
+                    const targetBtn = foundBtns[processedCount];
                     if (!targetBtn) break;
 
                     try {
                         await targetBtn.click({ force: true });
-                        await page.waitForTimeout(500);
+                        await page.waitForTimeout(800);
 
                         let editor = await page.$('div[contenteditable="true"], textarea');
                         if (!editor) {
-                            editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 1500 }).catch(() => null);
+                            editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 }).catch(() => null);
                         }
 
                         if (editor) {
                             await editor.click();
                             await page.keyboard.insertText(COMMENT_MESSAGE);
-                            await page.waitForTimeout(200);
+                            await page.waitForTimeout(300);
 
                             await page.keyboard.press('Enter');
-                            await page.waitForTimeout(1000);
+                            await page.waitForTimeout(2500);
                         }
 
                         processedCount++;
                         console.log(`✅ コメント投稿完了 (${processedCount}件目)`);
                     } catch (err) {
                         processedCount++;
+                        console.log(`⚠️ コメント処理スキップ/エラー (${processedCount}件目):`, err.message);
                     } finally {
                         await dismissAllModals(page);
                     }
@@ -304,6 +309,11 @@ async function main() {
             console.error(`❌ アカウント #${accountNum} でエラーが発生しました:`, error.message);
             await takeStepScreenshot(page, 'error-occurred', accountNum);
             await browser.close();
+        } finally {
+            // 一時クッキーファイルのクリーンアップ
+            if (fs.existsSync(authFile)) {
+                try { fs.unlinkSync(authFile); } catch (e) {}
+            }
         }
     }
 

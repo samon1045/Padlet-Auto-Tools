@@ -55,7 +55,6 @@ async function dismissAllModals(page) {
     }
     try {
         await page.evaluate(() => {
-            // 「もう一度お試しください」や各種エラーポップアップ、アラート要素をすべて強制削除
             const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
@@ -179,36 +178,34 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクション（カラム）を正確に特定して順次投稿
+            // 1. 各セクションへの新規投稿作成（正確なボタンリスト取得方式）
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            const sectionSelector = "section, div[data-section-id], .section-container, div.flex-col > div.relative";
-            let sectionCount = await page.$$eval(sectionSelector, els => els.length);
-            
-            if (sectionCount === 0) {
-                const fallbackBtns = await page.$$('button:has-text("+"), div.section-add-button');
-                sectionCount = fallbackBtns.length;
-            }
-            console.log(`🔍 検出されたセクション数: ${sectionCount}個`);
+            // セクションのカラム内にある「＋」ボタンのみを正確に絞り込むセレクタ
+            // 各セクションのヘッダーや下部にある独立した追加ボタンを狙う
+            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button';
+            let addButtons = await page.$$(addButtonsSelector);
 
-            for (let i = 0; i < sectionCount; i++) {
+            // もし専用クラスで取れない場合のフォールバック（画面上にある明示的な「＋」ボタン）
+            if (addButtons.length === 0 || addButtons.length > 20) {
+                addButtons = await page.$$('button:has-text("+")');
+            }
+
+            console.log(`🔍 検出された実際のセクション投稿ボタン数: ${addButtons.length}個`);
+
+            for (let i = 0; i < addButtons.length; i++) {
                 try {
                     await dismissAllModals(page);
 
-                    const sections = await page.$$(sectionSelector);
-                    let targetBtn = null;
-
-                    if (sections[i]) {
-                        targetBtn = await sections[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                    // ボタン要素を毎回安全に再取得
+                    let currentBtns = await page.$$(addButtonsSelector);
+                    if (currentBtns.length === 0 || currentBtns.length > 20) {
+                        currentBtns = await page.$$('button:has-text("+")');
                     }
 
-                    if (!targetBtn) {
-                        const allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                        targetBtn = allBtns[i];
-                    }
-
+                    const targetBtn = currentBtns[i];
                     if (!targetBtn) {
                         console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                         continue;

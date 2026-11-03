@@ -182,24 +182,30 @@ async function main() {
             // ==========================================
             // 1. 新規投稿作成
             // ==========================================
-            const TOPIC_ROUNDS = 15;
+            const TOPIC_ROUNDS = 3; // 各セクションを確実に回るためラウンド数を調整
 
             for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
                 console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
+                
+                // ボード上のすべての「＋」ボタンやセクション追加ボタンを取得
                 const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                console.log(`🔍 検出された投稿ボタン数: ${addButtons.length}個`);
 
                 for (let i = 0; i < addButtons.length; i++) {
                     try {
+                        // 毎回確実に余計なモーダルを閉じる
                         await dismissAllModals(page);
+                        
                         const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         const targetAddBtn = freshAddBtns[i];
 
                         if (!targetAddBtn) continue;
 
+                        // 該当するセクションの「＋」ボタンをクリック
                         await targetAddBtn.click({ force: true });
                         await page.waitForTimeout(1000);
 
-                        // 件名（タイトル）入力欄
+                        // 1. 件名入力
                         const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
                         if (titleInput) {
                             await titleInput.click();
@@ -207,24 +213,24 @@ async function main() {
                             await page.waitForTimeout(200);
                         }
 
-                        // 本文エディタ
+                        // 2. 本文入力
                         const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"]');
                         if (bodyEditor) {
                             await bodyEditor.click();
-                            await page.keyboard.type(TOPIC_MESSAGE, { delay: 30 });
+                            await page.keyboard.type(TOPIC_MESSAGE, { delay: 20 });
                             await page.waitForTimeout(300);
                         }
 
-                        // 画像添付
+                        // 3. 画像添付
                         await attachImage(page, accountNum);
                         await page.waitForTimeout(1000);
 
-                        // 「公開」ボタンをクリックし、投稿が反映されてモーダルが閉じるまでしっかり待つ
+                        // 4. 「公開」ボタンをクリックして確実に待つ
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
                         if (publishBtn && await publishBtn.isVisible()) {
                             await publishBtn.click({ force: true });
-                            console.log('✅ 「公開」ボタンをクリックしました！');
-                            await page.waitForTimeout(2500); // 投稿反映の完了待ち
+                            console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました！`);
+                            await page.waitForTimeout(3000); // 投稿が完全に反映されるまでしっかり待つ
                         } else {
                             await page.keyboard.press('Enter');
                             await page.waitForTimeout(2000);
@@ -234,13 +240,12 @@ async function main() {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
                         }
                     } catch (err) {
-                        console.log('⚠️ 投稿処理中にエラー:', err.message);
+                        console.log(`⚠️ 投稿処理中エラー (セクション ${i}):`, err.message);
                     } finally {
                         await dismissAllModals(page);
                     }
                 }
             }
-
             // ==========================================
             // 2. コメント巡回
             // ==========================================

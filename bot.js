@@ -188,48 +188,69 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 Padletのボード上で各カラムのヘッダー直下にある「＋」ボタンを直接正確にすべて取得する
-                let sectionAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                // 💡 セクションの「列（カラム）」自体を位置情報（X座標順）で確実に特定して取得する
+                // Padletのカラム要素を特定するセレクタ（data属性や一般的なセクションコンテナ）
+                let columns = await page.$$('[data-section-id], .section, [class*="section"], [class*="column"]');
                 
-                // 画面下部の固定「＋ 投稿」ボタン（全体投稿用）を除外し、セクション内のボタンだけに絞り込む
-                const validSectionBtns = [];
-                for (const btn of sectionAddBtns) {
+                // もし汎用セレクタで取れすぎる場合は、画面上部のセクションヘッダーの下にある「＋」ボタンのX座標を元にグループ化する
+                // ここでは、各カラムの独立した「＋」ボタンをDOM上の出現順かつユニークにスキャンする
+                let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                
+                // 画面下部の固定ボタン（全体投稿用など）を除外し、X座標で左から右へ並び替える
+                const uniqueColumnsBtns = [];
+                const seenX = new Set();
+
+                for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // y座標が上部〜中層にあるもの（画面下部の固定ボタンは y が大きいため除外）
                         if (box && box.y < 700) {
-                            validSectionBtns.push(btn);
+                            // X座標を丸めて、同じカラム内の重複を避ける（およそ50ピクセル以内の近接を除外）
+                            const roundedX = Math.round(box.x / 50) * 50;
+                            if (!seenX.has(roundedX)) {
+                                seenX.add(roundedX);
+                                uniqueColumnsBtns.push({ btn, x: box.x });
+                            }
                         }
                     } catch (e) {}
                 }
 
-                console.log(`🔍 検出された有効なセクション「＋」ボタン数: ${validSectionBtns.length}個`);
+                // X座標（左から右）の順にソート
+                uniqueColumnsBtns.sort((a, b) => a.x - b.x);
 
-                for (let i = 0; i < validSectionBtns.length; i++) {
+                console.log(`🔍 検出された独立したセクション列数（位置ベース）: ${uniqueColumnsBtns.length}個`);
+
+                for (let i = 0; i < uniqueColumnsBtns.length; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループボタンを再取得
-                        let freshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                        const currentValid = [];
-                        for (const b of freshBtns) {
+                        // 毎ループごとにボタン群を再スキャンして座標順にソートし直す
+                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                        const currentList = [];
+                        const currentSeenX = new Set();
+
+                        for (const b of refreshBtns) {
                             try {
                                 const box = await b.boundingBox();
                                 if (box && box.y < 700) {
-                                    currentValid.push(b);
+                                    const roundedX = Math.round(box.x / 50) * 50;
+                                    if (!currentSeenX.has(roundedX)) {
+                                        currentSeenX.add(roundedX);
+                                        currentList.push({ btn: b, x: box.x });
+                                    }
                                 }
                             } catch (e) {}
                         }
+                        currentList.sort((a, b) => a.x - b.x);
 
-                        const targetBtn = currentValid[i];
-                        if (!targetBtn) {
+                        const targetObj = currentList[i];
+                        if (!targetObj || !targetObj.btn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
                         }
 
-                        console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
-                        await targetBtn.scrollIntoViewIfNeeded();
-                        await targetBtn.click({ force: true });
+                        console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
+                        await targetObj.btn.scrollIntoViewIfNeeded();
+                        await targetObj.btn.click({ force: true });
                         await page.waitForTimeout(2500);
 
                         // 件名入力
@@ -275,7 +296,7 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // モーダルが完全に消えるまで待機
+                        // モーダルが完全に消えるまでしっかり待機
                         await page.waitForTimeout(8000);
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 
@@ -324,7 +345,6 @@ async function main() {
 
                     try {
                         await targetBtn.scrollIntoViewIfNeeded();
-                        // 💡 クリックが遮られないよう強制クリックを使用
                         await targetBtn.click({ force: true });
                         await page.waitForTimeout(1500);
 

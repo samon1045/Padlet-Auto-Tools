@@ -188,9 +188,12 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 カラム（列）単位のコンテナ要素を明確に取得する
-                const columns = await page.$$('div[data-section-id], .section-container, section');
-                console.log(`🔍 検出されたセクション列数: ${columns.length}個`);
+                // 💡 セクションの列を正しく一意に取得するため、data-section-id を持つ要素だけに厳格に絞り込む
+                let columns = await page.$$('div[data-section-id]');
+                if (columns.length === 0) {
+                    columns = await page.$$('.section-container');
+                }
+                console.log(`🔍 検出された実際のセクション列数: ${columns.length}個`);
 
                 const targetCount = Math.min(columns.length, 10);
 
@@ -198,8 +201,11 @@ async function main() {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループごとにカラムを最新状態で再取得し、i 番目のカラムだけに絞る
-                        const freshColumns = await page.$$('div[data-section-id], .section-container, section');
+                        // 毎ループごとにカラムを最新状態で再取得
+                        let freshColumns = await page.$$('div[data-section-id]');
+                        if (freshColumns.length === 0) {
+                            freshColumns = await page.$$('.section-container');
+                        }
                         const targetColumn = freshColumns[i];
 
                         if (!targetColumn) {

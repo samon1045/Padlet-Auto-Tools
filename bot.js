@@ -49,21 +49,19 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやサイドパネルを完全に消去するヘルパー
+// 🧹 モーダルやサイドパネル、オーバーレイを完全に消去する最強のヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(250);
     }
     try {
-        const closePanelBtn = await page.$('[data-testid*="surfaceActivityPanel"] button[aria-label*="閉じる"], [data-testid*="surfaceActivityPanel"] button[aria-label*="Close"], [aria-label*="パネルを閉じる"]');
-        if (closePanelBtn) {
-            await closePanelBtn.click({ force: true }).catch(() => {});
-            await page.waitForTimeout(500);
-        }
+        // 画面上の空白部分（背景）をクリックしてフォーカスを外す
+        await page.mouse.click(10, 10);
+        await page.waitForTimeout(200);
 
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], div.z-alert');
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], div.z-alert, div[role="dialog"]');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -194,9 +192,7 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 セクション列の「＋」ボタンを特定するための完全な改修ロジック：
-                // 1. 各セクションのヘッダー部分やカラム内にある「＋」アイコン、またはセクション名付近の追加ボタンを狙う
-                // 2. 画面右下の固定ボタン（X座標が画面の右端近く、かつY座標が下部にあるもの）を絶対に除外する
+                // 💡 セクション列の「＋」ボタンを特定（右下の全体投稿ボタンや不要な要素を厳格に除外）
                 let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 
                 const uniqueColumnsBtns = [];
@@ -205,9 +201,7 @@ async function main() {
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // 💡 条件の絞り込み:
-                        // - Y座標が上部〜中層（50px 〜 400px）にあるもの
-                        // - 画面の右端ギリギリ（右下の全体投稿ボタンがあるエリア、例: X > 1100 など）を除外する
+                        // 条件: Yが上部〜中層（50〜400）、かつ右端の固定ボタンエリア（X > 1100）を除外
                         if (box && box.y > 50 && box.y < 400 && box.x < 1100) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
@@ -218,16 +212,16 @@ async function main() {
                     } catch (e) {}
                 }
 
-                // X座標（左から右）の順に並び替え
                 uniqueColumnsBtns.sort((a, b) => a.x - b.x);
+                const targetColumnsBtns = uniqueColumnsBtns.slice(0, 6);
 
-                console.log(`🔍 検出された有効なセクション列数（右下ボタン除外済み）: ${uniqueColumnsBtns.length}個`);
+                console.log(`🔍 検出された有効なセクション列数（最大6個）: ${targetColumnsBtns.length}個`);
 
-                for (let i = 0; i < uniqueColumnsBtns.length; i++) {
+                for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
+                        // 💡 各セクションの処理に入る前に必ず画面を完全クリーンにする
                         await dismissAllModals(page);
 
-                        // 毎ループごとにボタン群を再スキャン
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         const currentList = [];
                         const currentSeenX = new Set();
@@ -254,6 +248,8 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
                         await targetObj.btn.scrollIntoViewIfNeeded();
+                        
+                        // 💡 クリック時に他の要素にブロックされないよう強制クリックを使用
                         await targetObj.btn.click({ force: true });
                         await page.waitForTimeout(2500);
 
@@ -300,9 +296,10 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        await page.waitForTimeout(4000);
+                        // 💡 投稿完了後の待機時間を少し長めにし、確実にモーダルを消し去る
+                        await page.waitForTimeout(5000);
                         await dismissAllModals(page);
-                        await page.waitForTimeout(4000);
+                        await page.waitForTimeout(2000);
 
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
                         await takeStepScreenshot(page, `round${round}-section-${i + 1}`, accountNum);

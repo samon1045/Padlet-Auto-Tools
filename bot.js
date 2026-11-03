@@ -188,24 +188,17 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 画面上のセクションカラム（列）コンテナを直接取得して確実にハンドリングする
-                let columns = await page.$$('div[data-section-id], .section-container');
-                if (columns.length === 0) {
-                    columns = await page.$$('section');
-                }
+                // 💡 各セクションカラムのコンテナを柔軟に取得
+                let columns = await page.$$('div[data-section-id], .section-container, section');
                 console.log(`🔍 検出されたセクション列数: ${columns.length}個`);
 
-                const targetCount = Math.min(columns.length, 10);
+                const targetCount = Math.min(columns.length, 15);
 
                 for (let i = 0; i < targetCount; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループごとにカラムを最新状態で再取得
-                        let freshColumns = await page.$$('div[data-section-id], .section-container');
-                        if (freshColumns.length === 0) {
-                            freshColumns = await page.$$('section');
-                        }
+                        let freshColumns = await page.$$('div[data-section-id], .section-container, section');
                         const targetCol = freshColumns[i];
 
                         if (!targetCol) {
@@ -213,8 +206,13 @@ async function main() {
                             continue;
                         }
 
-                        // そのカラム内にある「＋」ボタンを特定
-                        const targetBtn = await targetCol.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                        // 💡 カラム内の「＋」ボタンや、追加を意味するインタラクティブ要素を広く探索
+                        let targetBtn = await targetCol.$('button[aria-label*="投稿"], button[aria-label*="Add"], button.section-add-btn, div.section-add-button, button:has-text("+"), [data-testid*="add"], [data-testid*="section-add"]');
+                        
+                        // もし専用ボタンが見つからない場合、カラム内にある最初のボタン要素をフォールバックとして取得
+                        if (!targetBtn) {
+                            targetBtn = await targetCol.$('button');
+                        }
 
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
@@ -227,7 +225,7 @@ async function main() {
                         await page.waitForTimeout(2000);
 
                         // 件名入力
-                        const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
+                        const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
                         if (titleInput) {
                             await titleInput.click();
                             await titleInput.fill(TOPIC_TITLE);
@@ -235,7 +233,7 @@ async function main() {
                         }
 
                         // 本文入力
-                        const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"]');
+                        const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"], textarea');
                         if (bodyEditor) {
                             await bodyEditor.click();
                             await page.keyboard.insertText(TOPIC_MESSAGE);
@@ -245,7 +243,7 @@ async function main() {
                         // 画像添付
                         await attachImageForTopic(page);
 
-                        // 「公開」ボタンをクリック（複数セレクタで確実にヒットさせる）
+                        // 「公開」ボタンをクリック
                         let published = false;
                         for (let attempt = 0; attempt < 6; attempt++) {
                             const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]');
@@ -269,7 +267,6 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 投稿完了と画面の安定を待つ
                         await page.waitForTimeout(7000);
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 

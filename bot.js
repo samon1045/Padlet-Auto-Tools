@@ -194,7 +194,9 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 ボード上の各セクション列にある「＋」ボタンを座標順（左から右）に確実に6個取得する
+                // 💡 セクション列の「＋」ボタンを特定するための完全な改修ロジック：
+                // 1. 各セクションのヘッダー部分やカラム内にある「＋」アイコン、またはセクション名付近の追加ボタンを狙う
+                // 2. 画面右下の固定ボタン（X座標が画面の右端近く、かつY座標が下部にあるもの）を絶対に除外する
                 let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 
                 const uniqueColumnsBtns = [];
@@ -203,8 +205,11 @@ async function main() {
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        if (box && box.y > 50 && box.y < 600) {
-                            const roundedX = Math.round(box.x / 60) * 60;
+                        // 💡 条件の絞り込み:
+                        // - Y座標が上部〜中層（50px 〜 400px）にあるもの
+                        // - 画面の右端ギリギリ（右下の全体投稿ボタンがあるエリア、例: X > 1100 など）を除外する
+                        if (box && box.y > 50 && box.y < 400 && box.x < 1100) {
+                            const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
                                 seenX.add(roundedX);
                                 uniqueColumnsBtns.push({ btn, x: box.x });
@@ -213,15 +218,16 @@ async function main() {
                     } catch (e) {}
                 }
 
+                // X座標（左から右）の順に並び替え
                 uniqueColumnsBtns.sort((a, b) => a.x - b.x);
-                const targetColumnsBtns = uniqueColumnsBtns.slice(0, 6);
 
-                console.log(`🔍 検出された有効なセクション列数（最大6個）: ${targetColumnsBtns.length}個`);
+                console.log(`🔍 検出された有効なセクション列数（右下ボタン除外済み）: ${uniqueColumnsBtns.length}個`);
 
-                for (let i = 0; i < targetColumnsBtns.length; i++) {
+                for (let i = 0; i < uniqueColumnsBtns.length; i++) {
                     try {
                         await dismissAllModals(page);
 
+                        // 毎ループごとにボタン群を再スキャン
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         const currentList = [];
                         const currentSeenX = new Set();
@@ -229,8 +235,8 @@ async function main() {
                         for (const b of refreshBtns) {
                             try {
                                 const box = await b.boundingBox();
-                                if (box && box.y > 50 && box.y < 600) {
-                                    const roundedX = Math.round(box.x / 60) * 60;
+                                if (box && box.y > 50 && box.y < 400 && box.x < 1100) {
+                                    const roundedX = Math.round(box.x / 50) * 50;
                                     if (!currentSeenX.has(roundedX)) {
                                         currentSeenX.add(roundedX);
                                         currentList.push({ btn: b, x: box.x });

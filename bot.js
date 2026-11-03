@@ -188,23 +188,28 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                let sectionAddBtns = await page.$$('div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), section button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
-                if (sectionAddBtns.length === 0 || sectionAddBtns.length > 20) {
-                    sectionAddBtns = await page.$$('button:has-text("+")');
-                }
+                // 💡 カラム（列）単位のコンテナ要素を明確に取得する
+                const columns = await page.$$('div[data-section-id], .section-container, section');
+                console.log(`🔍 検出されたセクション列数: ${columns.length}個`);
 
-                console.log(`🔍 検出された有効なセクション投稿ボタン数: ${sectionAddBtns.length}個`);
+                const targetCount = Math.min(columns.length, 10);
 
-                for (let i = 0; i < sectionAddBtns.length; i++) {
+                for (let i = 0; i < targetCount; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        let freshBtns = await page.$$('div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), section button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
-                        if (freshBtns.length === 0 || freshBtns.length > 20) {
-                            freshBtns = await page.$$('button:has-text("+")');
+                        // 毎ループごとにカラムを最新状態で再取得し、i 番目のカラムだけに絞る
+                        const freshColumns = await page.$$('div[data-section-id], .section-container, section');
+                        const targetColumn = freshColumns[i];
+
+                        if (!targetColumn) {
+                            console.log(`⚠️ セクション列 ${i + 1} が見つからないためスキップします。`);
+                            continue;
                         }
 
-                        const targetBtn = freshBtns[i];
+                        // そのカラムコンテナの中にある「＋」ボタンをピンポイントで取得
+                        const targetBtn = await targetColumn.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;

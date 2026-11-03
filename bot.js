@@ -18,10 +18,16 @@ async function sendDiscordNotification(boardUrl) {
         return;
     }
 
-    try {
-        const payload = {
-            content: `🛡️ **Padletモデレーションボット通知**\n以下のボードで処理が実行されました！\n🔗 ${boardUrl}`
-        };
+try {
+        // パドレットの処理いろいろ...
+        console.log('\n🎉 全ての処理が完了しました！');
+    } catch (error) {
+        console.error('エラーが発生しました:', error.message);
+    } finally {
+        // 成功してもエラーで止まっても、最後に必ずブラウザを閉じてDiscordに通知する！
+        await sendDiscordNotification(TARGET_BOARD_URL);
+        await browser.close();
+    }
 
         const response = await fetch(DISCORD_WEBHOOK_URL, {
             method: 'POST',

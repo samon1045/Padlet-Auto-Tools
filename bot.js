@@ -57,7 +57,7 @@ async function dismissAllModals(page) {
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -188,46 +188,33 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                let sectionAddBtns = await page.$$('[data-section-id] button, .section-container button, section button, button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
-                
-                const validBtns = [];
-                for (const btn of sectionAddBtns) {
-                    try {
-                        const text = await btn.textContent();
-                        const ariaLabel = await btn.getAttribute('aria-label') || '';
-                        if (text.includes('+') || ariaLabel.includes('投稿を追加') || ariaLabel.includes('Add post')) {
-                            const box = await btn.boundingBox();
-                            if (box && box.y < 800) {
-                                validBtns.push(btn);
-                            }
-                        }
-                    } catch (e) {}
+                // 💡 画面上のセクションカラム（列）コンテナを直接取得して確実にハンドリングする
+                let columns = await page.$$('div[data-section-id], .section-container');
+                if (columns.length === 0) {
+                    columns = await page.$$('section');
                 }
+                console.log(`🔍 検出されたセクション列数: ${columns.length}個`);
 
-                console.log(`🔍 検出された有効なセクション投稿ボタン数: ${validBtns.length}個`);
-
-                const targetCount = Math.min(validBtns.length, 10);
+                const targetCount = Math.min(columns.length, 10);
 
                 for (let i = 0; i < targetCount; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        let freshBtns = await page.$$('[data-section-id] button, .section-container button, section button, button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
-                        const currentValidBtns = [];
-                        for (const btn of freshBtns) {
-                            try {
-                                const text = await btn.textContent();
-                                const ariaLabel = await btn.getAttribute('aria-label') || '';
-                                if (text.includes('+') || ariaLabel.includes('投稿を追加') || ariaLabel.includes('Add post')) {
-                                    const box = await btn.boundingBox();
-                                    if (box && box.y < 800) {
-                                        currentValidBtns.push(btn);
-                                    }
-                                }
-                            } catch (e) {}
+                        // 毎ループごとにカラムを最新状態で再取得
+                        let freshColumns = await page.$$('div[data-section-id], .section-container');
+                        if (freshColumns.length === 0) {
+                            freshColumns = await page.$$('section');
+                        }
+                        const targetCol = freshColumns[i];
+
+                        if (!targetCol) {
+                            console.log(`⚠️ セクション列 ${i + 1} が見つからないためスキップします。`);
+                            continue;
                         }
 
-                        const targetBtn = currentValidBtns[i];
+                        // そのカラム内にある「＋」ボタンを特定
+                        const targetBtn = await targetCol.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
 
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
@@ -236,11 +223,7 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
                         await targetBtn.scrollIntoViewIfNeeded();
-                        
-                        await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
-                            await dismissAllModals(page);
-                            await targetBtn.click({ force: true });
-                        });
+                        await targetBtn.click({ force: true });
                         await page.waitForTimeout(2000);
 
                         // 件名入力
@@ -262,10 +245,10 @@ async function main() {
                         // 画像添付
                         await attachImageForTopic(page);
 
-                        // 💡 「公開」ボタンの検出精度を大幅に強化（紫色の公開ボタンや各種セレクタに対応）
+                        // 「公開」ボタンをクリック（複数セレクタで確実にヒットさせる）
                         let published = false;
-                        for (let attempt = 0; attempt < 8; attempt++) {
-                            const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"], button.board-publish-btn');
+                        for (let attempt = 0; attempt < 6; attempt++) {
+                            const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]');
                             if (publishBtn) {
                                 try {
                                     const isVisible = await publishBtn.isVisible();
@@ -274,7 +257,6 @@ async function main() {
                                         await publishBtn.click({ force: true });
                                         published = true;
                                         console.log(`🚀 「公開」ボタンをクリックしました (試行 ${attempt + 1})`);
-                                        await page.waitForTimeout(4000);
                                         break;
                                     }
                                 } catch (e) {}
@@ -283,13 +265,12 @@ async function main() {
                         }
 
                         if (!published) {
-                            console.log('⚠️ 「公開」ボタンが見つからないため、Ctrl+Enterで送信を試みます。');
+                            console.log('⚠️ 「公開」ボタンが見つからないため、Ctrl+Enterで送信します。');
                             await page.keyboard.press('Control+Enter');
-                            await page.waitForTimeout(4000);
                         }
 
-                        // 💡 モーダルが完全に消えてボード画面に戻るのを長めにしっかり待機
-                        await page.waitForTimeout(5000);
+                        // 投稿完了と画面の安定を待つ
+                        await page.waitForTimeout(7000);
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 
                         await takeStepScreenshot(page, `round${round}-section-${i + 1}`, accountNum);

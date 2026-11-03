@@ -223,16 +223,18 @@ async function main() {
                         await attachImage(page, accountNum);
                         await page.waitForTimeout(1000);
 
-                        // 「公開」ボタンをクリック
+                        // 「公開」ボタンをクリックし、Enterキーも併用して送信を確実にトリガー
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
                         if (publishBtn && await publishBtn.isVisible()) {
                             await publishBtn.click({ force: true });
                             console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました！`);
-                            await page.waitForTimeout(3000);
-                        } else {
-                            await page.keyboard.press('Enter');
-                            await page.waitForTimeout(2000);
                         }
+                        
+                        // 念のためEnterキーも押して送信を確定させる
+                        await page.keyboard.press('Enter');
+                        
+                        // 投稿が完全にサーバーに送信されて反映されるまでしっかり待つ
+                        await page.waitForTimeout(3000);
 
                         if (tRound === 1 && i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);

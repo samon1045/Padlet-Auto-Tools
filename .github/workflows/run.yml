@@ -34,7 +34,7 @@ jobs:
       - name: ボットの実行
         run: node bot.js
         env:
-          ACCOUNTS: ${{ secrets.ACCOUNTS }}
+          AUTH_JSONS: ${{ secrets.AUTH_JSONS }}
           TARGET_URL: ${{ inputs.target_url }}
           TOPIC_MESSAGE: ${{ inputs.message }}
           COMMENT_MESSAGE: ${{ inputs.message }}

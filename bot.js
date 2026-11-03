@@ -49,11 +49,10 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 開いているモーダルやポップアップを確実に完全に閉じるヘルパー
+// 🧹 モーダルやサイドパネルを強制的に閉じるヘルパー
 async function closeAllModalsAndPopups(page) {
     for (let i = 0; i < 3; i++) {
         try {
-            // モーダル内の「×」ボタン（閉じるボタン）があれば直接クリック
             const closeBtn = await page.$('button[aria-label*="閉じる"], button[aria-label*="Close"], button.close-btn, div[role="dialog"] button:has-text("×")');
             if (closeBtn && await closeBtn.isVisible()) {
                 await closeBtn.click({ force: true });
@@ -66,7 +65,6 @@ async function closeAllModalsAndPopups(page) {
     }
 
     try {
-        // DOMからダイアログやオーバーレイ要素を強制的に削除
         await page.evaluate(() => {
             const modals = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], [data-testid*="modal"], div[role="dialog"], .oz-overlay');
             modals.forEach(el => el.remove());
@@ -170,7 +168,18 @@ async function main() {
         });
         
         const context = await browser.newContext({ storageState: authFile });
+
+        // 🔍 【デバッグ用】Playwrightのトレース記録を開始
+        await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+
         const page = await context.newPage();
+
+        // 🔍 【デバッグ用】ネットワークのエラー（4xx, 5xx）をコンソールに出力
+        page.on('response', response => {
+            if (response.status() >= 400) {
+                console.log(`⚠️ ネットワークエラー検知 [${response.status()}] : ${response.url()}`);
+            }
+        });
 
         try {
             console.log('Padletボードにアクセス中...');
@@ -186,7 +195,6 @@ async function main() {
 
             console.log('ボードの読み込み完了！処理を開始します...');
 
-            // 2回繰り返すループ
             for (let round = 1; round <= 2; round++) {
                 console.log(`\n========================================`);
                 console.log(`🔄 【 処理ラウンド ${round} / 2 回目 】`);
@@ -195,7 +203,7 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 各セクションの上部にある「＋」ボタンのみを正確に取得する
+                // 💡 セクションヘッダー付近にある「＋」ボタンのみを特定（右下の全体投稿ボタンや不要な要素を厳格に除外）
                 let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 
                 const uniqueColumnsBtns = [];
@@ -204,8 +212,8 @@ async function main() {
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // 💡 条件: Y座標が上部（50〜350px）、かつ右端の固定ボタン（X > 1100）や右下ボタンを完全に除外
-                        if (box && box.y > 50 && box.y < 350 && box.x < 1100) {
+                        // 💡 条件: 各セクションの上部にある「＋」ボタン（Y座標: 50〜300px）、かつ画面右下の全体投稿ボタンを完全に除外するため X < 1000 に限定
+                        if (box && box.y > 50 && box.y < 300 && box.x < 1000) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
                                 seenX.add(roundedX);
@@ -222,10 +230,8 @@ async function main() {
 
                 for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
-                        // 💡 各セクションの処理開始前に必ず既存のモーダルを綺麗に掃除する
                         await closeAllModalsAndPopups(page);
 
-                        // 最新のボタン位置を再スキャンして取得
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         const currentList = [];
                         const currentSeenX = new Set();
@@ -233,7 +239,7 @@ async function main() {
                         for (const b of refreshBtns) {
                             try {
                                 const box = await b.boundingBox();
-                                if (box && box.y > 50 && box.y < 350 && box.x < 1100) {
+                                if (box && box.y > 50 && box.y < 300 && box.x < 1000) {
                                     const roundedX = Math.round(box.x / 50) * 50;
                                     if (!currentSeenX.has(roundedX)) {
                                         currentSeenX.add(roundedX);
@@ -253,7 +259,6 @@ async function main() {
                         console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
                         await targetObj.btn.scrollIntoViewIfNeeded();
                         
-                        // 座標指定による絶対クリックで確実に対象セクションの「＋」を叩く
                         const box = await targetObj.btn.boundingBox();
                         if (box) {
                             await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -306,7 +311,6 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了後の完了待機と、確実にモーダルを消し去る処理
                         await page.waitForTimeout(4000);
                         await closeAllModalsAndPopups(page);
                         await page.waitForTimeout(2000);
@@ -316,6 +320,9 @@ async function main() {
 
                     } catch (err) {
                         console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
+                        // 🔍 【デバッグ用】エラー瞬間のDOMをファイルに出力
+                        const htmlContent = await page.content();
+                        fs.writeFileSync(`error-dom-round${round}-sec${i+1}-${Date.now()}.html`, htmlContent);
                         await closeAllModalsAndPopups(page);
                     } finally {
                         await closeAllModalsAndPopups(page);
@@ -362,7 +369,7 @@ async function main() {
 
                         let editor = await page.$('div[contenteditable="true"], textarea');
                         if (!editor) {
-                            editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
+                            editor = await page.waitForSelector('div[contenteditable="true'], textarea', { timeout: 3000 }).catch(() => null);
                         }
 
                         if (editor) {
@@ -395,6 +402,9 @@ async function main() {
 
             await takeStepScreenshot(page, 'success-final', accountNum);
 
+            // 🔍 【デバッグ用】正常終了時のトレース保存
+            await context.tracing.stop({ path: 'trace-success.zip' });
+
             success = true;
             await browser.close();
 
@@ -404,6 +414,13 @@ async function main() {
         } catch (error) {
             console.error(`❌ アカウント #${accountNum} でエラーが発生しました:`, error.message);
             await takeStepScreenshot(page, 'error-occurred', accountNum);
+
+            // 🔍 【デバッグ用】エラー発生時のトレース保存
+            try {
+                await context.tracing.stop({ path: `trace-error-acc${accountNum}.zip` });
+                console.log(`📦 エラー時のトレースファイル保存: trace-error-acc${accountNum}.zip`);
+            } catch (e) {}
+
             await browser.close();
         } finally {
             if (fs.existsSync(authFile)) {

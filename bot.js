@@ -53,11 +53,11 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(300);
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], div.z-alert');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -65,7 +65,7 @@ async function dismissAllModals(page) {
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(600);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -188,32 +188,40 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 各セクションカラムのコンテナを柔軟に取得
-                let columns = await page.$$('div[data-section-id], .section-container, section');
-                console.log(`🔍 検出されたセクション列数: ${columns.length}個`);
+                // 💡 Padletのボード上で各カラムのヘッダー直下にある「＋」ボタンを直接正確にすべて取得する
+                let sectionAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                
+                // 画面下部の固定「＋ 投稿」ボタン（全体投稿用）を除外し、セクション内のボタンだけに絞り込む
+                const validSectionBtns = [];
+                for (const btn of sectionAddBtns) {
+                    try {
+                        const box = await btn.boundingBox();
+                        // y座標が上部〜中層にあるもの（画面下部の固定ボタンは y が大きいため除外）
+                        if (box && box.y < 700) {
+                            validSectionBtns.push(btn);
+                        }
+                    } catch (e) {}
+                }
 
-                const targetCount = Math.min(columns.length, 15);
+                console.log(`🔍 検出された有効なセクション「＋」ボタン数: ${validSectionBtns.length}個`);
 
-                for (let i = 0; i < targetCount; i++) {
+                for (let i = 0; i < validSectionBtns.length; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        let freshColumns = await page.$$('div[data-section-id], .section-container, section');
-                        const targetCol = freshColumns[i];
-
-                        if (!targetCol) {
-                            console.log(`⚠️ セクション列 ${i + 1} が見つからないためスキップします。`);
-                            continue;
+                        // 毎ループボタンを再取得
+                        let freshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                        const currentValid = [];
+                        for (const b of freshBtns) {
+                            try {
+                                const box = await b.boundingBox();
+                                if (box && box.y < 700) {
+                                    currentValid.push(b);
+                                }
+                            } catch (e) {}
                         }
 
-                        // 💡 カラム内の「＋」ボタンや、追加を意味するインタラクティブ要素を広く探索
-                        let targetBtn = await targetCol.$('button[aria-label*="投稿"], button[aria-label*="Add"], button.section-add-btn, div.section-add-button, button:has-text("+"), [data-testid*="add"], [data-testid*="section-add"]');
-                        
-                        // もし専用ボタンが見つからない場合、カラム内にある最初のボタン要素をフォールバックとして取得
-                        if (!targetBtn) {
-                            targetBtn = await targetCol.$('button');
-                        }
-
+                        const targetBtn = currentValid[i];
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
@@ -222,7 +230,7 @@ async function main() {
                         console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
                         await targetBtn.scrollIntoViewIfNeeded();
                         await targetBtn.click({ force: true });
-                        await page.waitForTimeout(2000);
+                        await page.waitForTimeout(2500);
 
                         // 件名入力
                         const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
@@ -267,7 +275,8 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        await page.waitForTimeout(7000);
+                        // モーダルが完全に消えるまで待機
+                        await page.waitForTimeout(8000);
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 
                         await takeStepScreenshot(page, `round${round}-section-${i + 1}`, accountNum);
@@ -315,6 +324,7 @@ async function main() {
 
                     try {
                         await targetBtn.scrollIntoViewIfNeeded();
+                        // 💡 クリックが遮られないよう強制クリックを使用
                         await targetBtn.click({ force: true });
                         await page.waitForTimeout(1500);
 

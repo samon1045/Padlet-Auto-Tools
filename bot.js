@@ -57,7 +57,7 @@ async function dismissAllModals(page) {
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal'], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -188,20 +188,16 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 セクション内の「＋」ボタンや追加ボタンを直接正確にリスト化する
-                // （右下の固定「＋ 投稿」ボタンを除外するため、上部にあるセクション内のボタンに限定する）
                 let sectionAddBtns = await page.$$('[data-section-id] button, .section-container button, section button, button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
                 
-                // ボタンのテキストや属性に「＋」または「add」が含まれるものだけに絞り込む
                 const validBtns = [];
                 for (const btn of sectionAddBtns) {
                     try {
                         const text = await btn.textContent();
                         const ariaLabel = await btn.getAttribute('aria-label') || '';
                         if (text.includes('+') || ariaLabel.includes('投稿を追加') || ariaLabel.includes('Add post')) {
-                            // 右下の絶対配置されている全体投稿ボタン（通常は画面右下に固定されている）を除外するため、位置やクラスをチェック
                             const box = await btn.boundingBox();
-                            if (box && box.y < 800) { // 画面下部の固定ボタンではないもの
+                            if (box && box.y < 800) {
                                 validBtns.push(btn);
                             }
                         }
@@ -216,7 +212,6 @@ async function main() {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループごとにボタンを最新状態で再取得してクリック
                         let freshBtns = await page.$$('[data-section-id] button, .section-container button, section button, button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
                         const currentValidBtns = [];
                         for (const btn of freshBtns) {

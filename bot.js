@@ -96,25 +96,22 @@ async function loginAndSaveSession(page, email, password, authFile) {
     await page.waitForTimeout(2000);
 
     try {
-        // メールアドレス入力欄を探して入力
         const emailInput = await page.$('input[type="email"], input[name="email"], input[placeholder*="Email"]');
         if (emailInput) {
             await emailInput.fill(email);
             await page.waitForTimeout(500);
         }
 
-        // パスワード入力欄を探して入力
         const passInput = await page.$('input[type="password"], input[name="password"], input[placeholder*="Password"]');
         if (passInput) {
             await passInput.fill(password);
             await page.waitForTimeout(500);
         }
 
-        // ログインボタンを押す
         const submitBtn = await page.$('button[type="submit"], button:has-text("Log in"), button:has-text("ログイン")');
         if (submitBtn) {
             await submitBtn.click();
-            await page.waitForTimeout(4000); // ログイン完了待ち
+            await page.waitForTimeout(5000); // ログイン完了待ちを長めに
         }
 
         // セッション状態をファイルに保存
@@ -133,7 +130,6 @@ async function main() {
         process.exit(1);
     }
 
-    // 🔑 アカウント情報（ACCOUNTS: "email:password" の改行区切り）を取得
     const accountsEnv = process.env.ACCOUNTS || process.env.AUTH_JSONS || '';
     const accountList = accountsEnv
         .split('\n')
@@ -141,33 +137,27 @@ async function main() {
         .filter(l => l.length > 0 && l.includes(':'));
 
     if (accountList.length === 0) {
-        console.log('⚠️ 有効なアカウント情報が見つかりません。ログインなしで実行を試みます。');
-        accountList.push('');
+        console.log('⚠️ 有効なアカウント情報が見つかりません。');
+        process.exit(1);
     }
 
     let success = false;
 
-    // 🔄 アカウントを順番にループして試す
     for (let index = 0; index < accountList.length; index++) {
         const accountInfo = accountList[index];
         const authFile = `auth-${index}.json`;
-        let email = '';
-        let password = '';
+        const parts = accountInfo.split(':');
+        const email = parts[0];
+        const password = parts.slice(1).join(':');
 
-        if (accountInfo) {
-            const parts = accountInfo.split(':');
-            email = parts[0];
-            password = parts.slice(1).join(':'); // パスワードにコロンが含まれる場合への配慮
-        }
-
-        console.log(`\n🔑 アカウント #${index + 1} (${email || '匿名'}) の処理を開始します...`);
+        console.log(`\n🔑 アカウント #${index + 1} (${email}) の処理を開始します...`);
 
         const browser = await chromium.launch({ 
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         
-        // 既存の保存済みセッションがあればそれを使う
+        // 既存のセッションファイルがあれば読み込む
         const hasStorageState = fs.existsSync(authFile);
         const context = await browser.newContext(
             hasStorageState ? { storageState: authFile } : {}
@@ -177,19 +167,25 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(1500);
+            await page.waitForTimeout(2000);
 
-            // ログイン画面に飛ばされた場合、かつメール/パスワードがあるなら自動ログインを試みる
-            if ((page.url().includes('login') || page.url().includes('verify')) && email && password) {
-                console.log('⚠️ セッションが切れているため、自動ログインを再実行します...');
+            // 未ログイン状態（ログイン画面や登録必須画面）の場合
+            if (page.url().includes('login') || page.url().includes('verify') || await page.$('text=registered users only')) {
+                console.log('⚠️ ログインが必要です。自動ログインを実行します...');
+                if (hasStorageState) {
+                    // 古いセッションファイルを削除
+                    fs.unlinkSync(authFile);
+                }
                 await loginAndSaveSession(page, email, password, authFile);
+                
                 // 再度ボードへ移動
+                console.log('ボードへ再アクセス中...');
                 await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-                await page.waitForTimeout(1500);
+                await page.waitForTimeout(2000);
             }
 
-            if (page.url().includes('login') || page.url().includes('verify')) {
-                throw new Error('ログインに失敗したか、認証画面から進めません。');
+            if (page.url().includes('login') || await page.$('text=registered users only')) {
+                throw new Error('ログインに失敗したか、ボードにアクセスできません。');
             }
 
             console.log('ボードの読み込み完了！処理を開始します...');
@@ -329,6 +325,7 @@ async function main() {
 
         } catch (error) {
             console.error(`❌ アカウント #${index + 1} でエラーが発生しました:`, error.message);
+            await page.screenshot({ path: `screenshot-error-${index + 1}.png`, fullPage: true }).catch(() => {});
             await browser.close();
             console.log('🔄 次のアカウントに切り替えてリトライします...');
         }
@@ -336,6 +333,7 @@ async function main() {
 
     if (!success) {
         console.error('❌ すべてのアカウントでの実行に失敗しました。');
+        process.exit(1);
     }
 }
 

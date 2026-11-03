@@ -123,7 +123,7 @@ async function main() {
         // ==========================================
         // 1. 新規投稿作成（高速・2回ずつ）
         // ==========================================
-        const TOPIC_ROUNDS = 2;
+        const TOPIC_ROUNDS = 10;
 
         for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
             console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
@@ -181,7 +181,7 @@ async function main() {
         // ==========================================
         // 2. コメント巡回（高速・2回ずつ）
         // ==========================================
-        const COMMENT_ROUNDS = 2;
+        const COMMENT_ROUNDS = 20;
 
         for (let round = 1; round <= COMMENT_ROUNDS; round++) {
             console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);

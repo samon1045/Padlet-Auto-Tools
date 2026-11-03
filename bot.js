@@ -262,10 +262,10 @@ async function main() {
                         // 画像添付
                         await attachImageForTopic(page);
 
-                        // 「公開」ボタンをクリック
+                        // 💡 「公開」ボタンの検出精度を大幅に強化（紫色の公開ボタンや各種セレクタに対応）
                         let published = false;
-                        for (let attempt = 0; attempt < 5; attempt++) {
-                            const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
+                        for (let attempt = 0; attempt < 8; attempt++) {
+                            const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"], button.board-publish-btn');
                             if (publishBtn) {
                                 try {
                                     const isVisible = await publishBtn.isVisible();
@@ -274,20 +274,22 @@ async function main() {
                                         await publishBtn.click({ force: true });
                                         published = true;
                                         console.log(`🚀 「公開」ボタンをクリックしました (試行 ${attempt + 1})`);
-                                        await page.waitForTimeout(3000);
+                                        await page.waitForTimeout(4000);
                                         break;
                                     }
                                 } catch (e) {}
                             }
-                            await page.waitForTimeout(800);
+                            await page.waitForTimeout(600);
                         }
 
                         if (!published) {
                             console.log('⚠️ 「公開」ボタンが見つからないため、Ctrl+Enterで送信を試みます。');
                             await page.keyboard.press('Control+Enter');
+                            await page.waitForTimeout(4000);
                         }
 
-                        await page.waitForTimeout(6000);
+                        // 💡 モーダルが完全に消えてボード画面に戻るのを長めにしっかり待機
+                        await page.waitForTimeout(5000);
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 
                         await takeStepScreenshot(page, `round${round}-section-${i + 1}`, accountNum);

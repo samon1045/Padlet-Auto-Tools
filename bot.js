@@ -49,14 +49,18 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやサイドパネル、詳細ポップアップを完全に消去する強力なヘルパー
+// 🧹 モーダルやサイドパネル、詳細プレビューを完全に強制消去するヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
     }
     try {
-        // サイドパネルの閉じるボタンや背景オーバーレイを強制削除
+        // 画面上部の何もない余白（ヘッダー部分など）をクリックして強制的にフォーカスを戻す
+        await page.mouse.click(200, 30);
+        await page.waitForTimeout(200);
+
+        // 邪魔なサイドパネルやダイアログをDOMから強制削除
         await page.evaluate(() => {
             const panels = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"]');
             panels.forEach(el => el.remove());
@@ -211,7 +215,7 @@ async function main() {
 
                 for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
-                        // 💡 各セクションの処理に入る前に必ず全モーダル・サイドパネルを完全消去
+                        // 💡 各セクションの処理に入る前に必ず画面を完全クリーンにする
                         await dismissAllModals(page);
 
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -240,7 +244,15 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
                         await targetObj.btn.scrollIntoViewIfNeeded();
-                        await targetObj.btn.click({ force: true });
+                        
+                        // 💡 確実にクリックするため、位置座標を指定したマウス絶対クリックを併用
+                        const box = await targetObj.btn.boundingBox();
+                        if (box) {
+                            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                        } else {
+                            await targetObj.btn.click({ force: true });
+                        }
+                        
                         await page.waitForTimeout(2500);
 
                         // 件名入力
@@ -286,7 +298,7 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了直後に自動で開くサイドパネルやモーダルを確実に消し去る
+                        // 💡 投稿完了直後に自動で開くサイドパネルを即座に消去する
                         await page.waitForTimeout(4000);
                         await dismissAllModals(page);
                         await page.waitForTimeout(2000);

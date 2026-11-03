@@ -183,11 +183,9 @@ async function main() {
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // Padletのカラム要素を特定する堅牢なセレクタ
-            const sectionSelector = 'section, div[data-section-id], .section-container, div.flex-col > div.relative';
+            const sectionSelector = "section, div[data-section-id], .section-container, div.flex-col > div.relative";
             let sectionCount = await page.$$eval(sectionSelector, els => els.length);
             
-            // 万が一セクション要素がうまく取れない場合は、画面内の「＋」ボタンの数を基準にする
             if (sectionCount === 0) {
                 const fallbackBtns = await page.$$('button:has-text("+"), div.section-add-button');
                 sectionCount = fallbackBtns.length;
@@ -198,7 +196,6 @@ async function main() {
                 try {
                     await dismissAllModals(page);
 
-                    // ループの都度セクションを再取得し、i番目のセクション内の「＋」ボタンを正確に探す
                     const sections = await page.$$(sectionSelector);
                     let targetBtn = null;
 
@@ -206,7 +203,6 @@ async function main() {
                         targetBtn = await sections[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                     }
 
-                    // セクション内で見つからない場合は全体からフォールバック取得
                     if (!targetBtn) {
                         const allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         targetBtn = allBtns[i];
@@ -255,7 +251,6 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    // 💡 投稿が確実にボードに反映され、モーダルが完全に閉じるまで待機
                     await page.waitForTimeout(5000); 
                     console.log(`✅ [セクション ${i + 1}] 投稿が完了しました！`);
 
@@ -320,7 +315,7 @@ async function main() {
 
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
-                        editor = await page.waitForSelector('div[contenteditable="true'], textarea', { timeout: 2000 }).catch(() => null);
+                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 }).catch(() => null);
                     }
 
                     if (editor) {

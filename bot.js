@@ -8,6 +8,35 @@ const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || 'm';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'm';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; // 🔗 DiscordのウェブフックURL
+
+// Discordに通知を送る関数
+async function sendDiscordNotification(boardUrl) {
+    if (!DISCORD_WEBHOOK_URL) {
+        console.log('⚠️ DISCORD_WEBHOOK_URL が設定されていないため、Discord通知をスキップします。');
+        return;
+    }
+
+    try {
+        const payload = {
+            content: `🛡️ **Padletモデレーションボット通知**\n以下のボードで処理が実行されました！\n🔗 ${boardUrl}`
+        };
+
+        const response = await fetch(DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            console.log('✅ Discordへの通知送信に成功しました！');
+        } else {
+            console.error('❌ Discordへの通知送信に失敗しました:', response.statusText);
+        }
+    } catch (err) {
+        console.error('❌ Discord通知エラー:', err.message);
+    }
+}
 
 // 高速にポップアップを閉じるヘルパー
 async function dismissAllModals(page) {
@@ -94,7 +123,7 @@ async function main() {
         // ==========================================
         // 1. 新規投稿作成（高速・2回ずつ）
         // ==========================================
-        const TOPIC_ROUNDS =2;
+        const TOPIC_ROUNDS = 2;
 
         for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
             console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
@@ -219,6 +248,9 @@ async function main() {
 
         console.log('\n🎉 超高速での全ての処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
+
+        // 🔗 処理が完了したボードのURLをDiscordに通知！
+        await sendDiscordNotification(TARGET_BOARD_URL);
 
     } catch (error) {
         console.error('エラーが発生しましたが処理を継続します:', error.message);

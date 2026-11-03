@@ -6,7 +6,7 @@ const fs = require('fs');
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
+const IMAGE_PATH = path.join(__dirname, '_______.gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -197,9 +197,9 @@ async function main() {
                         if (!targetAddBtn) continue;
 
                         await targetAddBtn.click({ force: true });
-                        await page.waitForTimeout(1000); // フォームの展開をしっかり待つ
+                        await page.waitForTimeout(1000);
 
-                        // 1. 件名（タイトル）入力欄へ確実に入力
+                        // 件名（タイトル）入力欄
                         const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
                         if (titleInput) {
                             await titleInput.click();
@@ -207,29 +207,28 @@ async function main() {
                             await page.waitForTimeout(200);
                         }
 
-                        // 2. 本文エディタ（プレースホルダー「素晴らしいこと」や contenteditable）へ確実に入力
+                        // 本文エディタ
                         const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"]');
                         if (bodyEditor) {
                             await bodyEditor.click();
-                            await page.keyboard.type(TOPIC_MESSAGE, { delay: 30 }); // 一文字ずつ確実に入力
+                            await page.keyboard.type(TOPIC_MESSAGE, { delay: 30 });
                             await page.waitForTimeout(300);
                         }
 
-                        // 3. 画像添付
+                        // 画像添付
                         await attachImage(page, accountNum);
-                        await page.waitForTimeout(1000); // 画像アップロードの完了待ち
+                        await page.waitForTimeout(1000);
 
-                        // 4. 「公開」ボタンが有効になるのを待ってクリック
+                        // 「公開」ボタンをクリックし、投稿が反映されてモーダルが閉じるまでしっかり待つ
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
-                        if (publishBtn) {
-                            // 有効化されるまで少し待つ
-                            await page.waitForTimeout(500);
+                        if (publishBtn && await publishBtn.isVisible()) {
                             await publishBtn.click({ force: true });
                             console.log('✅ 「公開」ボタンをクリックしました！');
+                            await page.waitForTimeout(2500); // 投稿反映の完了待ち
                         } else {
                             await page.keyboard.press('Enter');
+                            await page.waitForTimeout(2000);
                         }
-                        await page.waitForTimeout(2000); // 投稿反映待ち
 
                         if (tRound === 1 && i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
@@ -241,7 +240,7 @@ async function main() {
                     }
                 }
             }
-            
+
             // ==========================================
             // 2. コメント巡回
             // ==========================================

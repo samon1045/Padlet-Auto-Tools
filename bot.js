@@ -49,9 +49,9 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
 
 // 🧹 モーダルや邪魔なパネルを閉じるヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(200);
     }
     try {
         await page.evaluate(() => {
@@ -63,30 +63,34 @@ async function dismissAllModals(page) {
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(400);
 }
 
-// 🖼️ 画像アップロード処理
+// 🖼️ 確実に画像をアップロードする処理（エラー回避のため待機を十分にとる）
 async function attachImage(page, accountIndex) {
-    if (!fs.existsSync(IMAGE_PATH)) return;
+    if (!fs.existsSync(IMAGE_PATH)) {
+        console.log('⚠️ 画像ファイルが見つかりません:', IMAGE_PATH);
+        return;
+    }
 
     try {
+        // アップロードボタンや追加アイコンを探してクリック
         const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
-            await page.waitForTimeout(300);
+            await page.waitForTimeout(800);
         }
 
         const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"]');
         if (uploadOption) {
             const [fileChooser] = await Promise.all([
-                page.waitForEvent('filechooser', { timeout: 2000 }).catch(() => null),
+                page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null),
                 uploadOption.click({ force: true })
             ]);
             if (fileChooser) {
                 await fileChooser.setFiles(IMAGE_PATH);
-                await page.waitForTimeout(800);
-                await takeStepScreenshot(page, 'image-uploaded', accountIndex);
+                console.log('🖼️ 画像ファイルを選択しました。アップロード完了を待ちます...');
+                await page.waitForTimeout(3000); // アップロードエラーを防ぐためしっかり待機
                 return;
             }
         }
@@ -94,9 +98,12 @@ async function attachImage(page, accountIndex) {
         const fileInputs = await page.$$('input[type="file"]');
         if (fileInputs.length > 0) {
             await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
-            await page.waitForTimeout(800);
+            console.log('🖼️ input経由で画像を設定しました。アップロード完了を待ちます...');
+            await page.waitForTimeout(3000); // しっかり待機
         }
-    } catch (err) {}
+    } catch (err) {
+        console.log('⚠️ 画像アップロード中に軽微なスキップ:', err.message);
+    }
 }
 
 async function main() {
@@ -162,7 +169,7 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(4000);
 
             await takeStepScreenshot(page, 'after-goto', accountNum);
 
@@ -170,12 +177,12 @@ async function main() {
                 throw new Error('クッキーの有効期限が切れているか、ログインしていません。');
             }
 
-            console.log('ボードの読み込み完了！処理を開始します...');
+            console.log('ボードの読み込み完了！確実・安定モードで処理を開始します...');
 
             // ==========================================
             // 1. 新規投稿作成（全セクション対応）
             // ==========================================
-            const TOPIC_ROUNDS = 2; // 各セクションを確実に2回ずつ巡回
+            const TOPIC_ROUNDS = 1; // 確実に1周してエラーを防ぐ
 
             for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
                 console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
@@ -194,14 +201,14 @@ async function main() {
                         if (!targetAddBtn) continue;
 
                         await targetAddBtn.click({ force: true });
-                        await page.waitForTimeout(1000);
+                        await page.waitForTimeout(1500);
 
                         // 件名入力
                         const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
                         if (titleInput) {
                             await titleInput.click();
                             await titleInput.fill(TOPIC_TITLE);
-                            await page.waitForTimeout(200);
+                            await page.waitForTimeout(400);
                         }
 
                         // 本文入力
@@ -209,12 +216,11 @@ async function main() {
                         if (bodyEditor) {
                             await bodyEditor.click();
                             await page.keyboard.insertText(TOPIC_MESSAGE);
-                            await page.waitForTimeout(300);
+                            await page.waitForTimeout(600);
                         }
 
-                        // 画像添付
+                        // 画像添付（十分なウェイトを確保）
                         await attachImage(page, accountNum);
-                        await page.waitForTimeout(1000);
 
                         // 「公開」ボタンをクリック ＋ Enterキー送信
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
@@ -223,9 +229,9 @@ async function main() {
                             console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました！`);
                         }
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(2500); // 反映待ち
+                        await page.waitForTimeout(3500); // 投稿のサーバー反映を確実に待つ
 
-                        if (tRound === 1 && i === 0) {
+                        if (i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
                         }
                     } catch (err) {
@@ -239,7 +245,7 @@ async function main() {
             // ==========================================
             // 2. コメント巡回
             // ==========================================
-            const COMMENT_ROUNDS = 5;
+            const COMMENT_ROUNDS = 3;
 
             for (let round = 1; round <= COMMENT_ROUNDS; round++) {
                 console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);
@@ -269,7 +275,7 @@ async function main() {
 
                     try {
                         await targetBtn.click({ force: true });
-                        await page.waitForTimeout(800);
+                        await page.waitForTimeout(1000);
 
                         let editor = await page.$('div[contenteditable="true"], textarea');
                         if (!editor) {
@@ -279,19 +285,19 @@ async function main() {
                         if (editor) {
                             await editor.click();
                             await page.keyboard.insertText(COMMENT_MESSAGE);
-                            await page.waitForTimeout(200);
+                            await page.waitForTimeout(400);
 
                             await attachImage(page, accountNum);
 
                             await page.keyboard.press('Enter');
-                            await page.waitForTimeout(1500);
+                            await page.waitForTimeout(2000);
 
                             const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                             const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                             if (nameInput && doneBtn && await nameInput.isVisible()) {
                                 await nameInput.fill('さーもん万歳！！');
                                 await doneBtn.click({ force: true });
-                                await page.waitForTimeout(500);
+                                await page.waitForTimeout(800);
                             }
                         }
 
@@ -311,7 +317,7 @@ async function main() {
             success = true;
             await browser.close();
 
-            // 🔔 Discord通知の実行
+            // 🔔 確実にDiscord通知を実行
             await sendDiscordNotification(TARGET_BOARD_URL, accountNum);
             break;
 

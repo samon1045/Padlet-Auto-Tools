@@ -6,7 +6,7 @@ const fs = require('fs');
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'm';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
-const IMAGE_PATH = path.join(__dirname, '_______.gif');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -38,7 +38,7 @@ async function sendDiscordNotification(boardUrl, accountIndex) {
     }
 }
 
-// 高速にポップアップを閉じるヘルパー
+// ポップアップを閉じるヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 2; i++) {
         await page.keyboard.press('Escape');
@@ -57,7 +57,7 @@ async function dismissAllModals(page) {
     await page.waitForTimeout(100);
 }
 
-// 🖼️ 高速画像アップロード
+// 🖼️ 画像アップロード
 async function attachImage(page) {
     if (!fs.existsSync(IMAGE_PATH)) return;
 
@@ -89,70 +89,113 @@ async function attachImage(page) {
     } catch (err) {}
 }
 
+// 🔐 自動ログイン処理関数
+async function loginAndSaveSession(page, email, password, authFile) {
+    console.log(`🌐 ログインページへアクセス中... (${email})`);
+    await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000);
+
+    try {
+        // メールアドレス入力欄を探して入力
+        const emailInput = await page.$('input[type="email"], input[name="email"], input[placeholder*="Email"]');
+        if (emailInput) {
+            await emailInput.fill(email);
+            await page.waitForTimeout(500);
+        }
+
+        // パスワード入力欄を探して入力
+        const passInput = await page.$('input[type="password"], input[name="password"], input[placeholder*="Password"]');
+        if (passInput) {
+            await passInput.fill(password);
+            await page.waitForTimeout(500);
+        }
+
+        // ログインボタンを押す
+        const submitBtn = await page.$('button[type="submit"], button:has-text("Log in"), button:has-text("ログイン")');
+        if (submitBtn) {
+            await submitBtn.click();
+            await page.waitForTimeout(4000); // ログイン完了待ち
+        }
+
+        // セッション状態をファイルに保存
+        const storageState = await page.context().storageState();
+        fs.writeFileSync(authFile, JSON.stringify(storageState));
+        console.log('✅ ログイン成功＆セッションを保存しました！');
+    } catch (err) {
+        console.error('❌ ログイン処理中にエラーが発生しました:', err.message);
+        throw err;
+    }
+}
+
 async function main() {
     if (!TARGET_BOARD_URL) {
         console.error('❌ TARGET_URLが指定されていません。');
         process.exit(1);
     }
 
-// 🔑 複数の認証情報（AUTH_JSONS）をシンプルに改行区切りで安全に取得
-    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
-    let authList = [];
+    // 🔑 アカウント情報（ACCOUNTS: "email:password" の改行区切り）を取得
+    const accountsEnv = process.env.ACCOUNTS || process.env.AUTH_JSONS || '';
+    const accountList = accountsEnv
+        .split('\n')
+        .map(l => l.replace(/\r/g, '').trim())
+        .filter(l => l.length > 0 && l.includes(':'));
 
-    // 改行で分割し、空行やコメントを除外してそのままアカウントリストに格納する
-    const lines = authsEnv.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
-    
-    for (const line of lines) {
-        // パースエラーの心配をせず、1行ごとの文字列データをそのまま蓄積する
-        if (line.startsWith('[') && line.endsWith(']')) {
-            authList.push(line);
-        }
-    }
-
-    if (authList.length === 0) {
-        console.log('⚠️ 有効な認証情報が見つかりません。ログインなしで実行を試みます。');
-        authList.push('');
+    if (accountList.length === 0) {
+        console.log('⚠️ 有効なアカウント情報が見つかりません。ログインなしで実行を試みます。');
+        accountList.push('');
     }
 
     let success = false;
 
-    // 🔄 アカウントを順番にループして試す（枯渇対策ローテーション）
-    for (let index = 0; index < authList.length; index++) {
-        const authData = authList[index];
+    // 🔄 アカウントを順番にループして試す
+    for (let index = 0; index < accountList.length; index++) {
+        const accountInfo = accountList[index];
         const authFile = `auth-${index}.json`;
+        let email = '';
+        let password = '';
 
-        console.log(`\n🔑 アカウント #${index + 1} の認証情報でログインを試行します...`);
-
-        if (authData) {
-            fs.writeFileSync(authFile, authData);
+        if (accountInfo) {
+            const parts = accountInfo.split(':');
+            email = parts[0];
+            password = parts.slice(1).join(':'); // パスワードにコロンが含まれる場合への配慮
         }
+
+        console.log(`\n🔑 アカウント #${index + 1} (${email || '匿名'}) の処理を開始します...`);
 
         const browser = await chromium.launch({ 
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         
-        const hasStorageState = authData && fs.existsSync(authFile);
+        // 既存の保存済みセッションがあればそれを使う
+        const hasStorageState = fs.existsSync(authFile);
         const context = await browser.newContext(
             hasStorageState ? { storageState: authFile } : {}
         );
         const page = await context.newPage();
 
         try {
-            console.log(`設定されたメッセージを使用します -> [ ${COMMENT_MESSAGE} ]`);
-            console.log('Padletボードに高速アクセス中...');
+            console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(1500);
 
-            // セッション切れやログイン画面に飛ばされた場合は次のアカウントへ
-            if (page.url().includes('login') || page.url().includes('verify')) {
-                throw new Error('セッションの有効期限が切れています（ログイン画面にリダイレクトされました）。');
+            // ログイン画面に飛ばされた場合、かつメール/パスワードがあるなら自動ログインを試みる
+            if ((page.url().includes('login') || page.url().includes('verify')) && email && password) {
+                console.log('⚠️ セッションが切れているため、自動ログインを再実行します...');
+                await loginAndSaveSession(page, email, password, authFile);
+                // 再度ボードへ移動
+                await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
+                await page.waitForTimeout(1500);
             }
 
-            console.log('ボードの読み込み完了！超高速処理を開始します...');
+            if (page.url().includes('login') || page.url().includes('verify')) {
+                throw new Error('ログインに失敗したか、認証画面から進めません。');
+            }
+
+            console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 新規投稿作成（高速・2回ずつ）
+            // 1. 新規投稿作成
             // ==========================================
             const TOPIC_ROUNDS = 15;
 
@@ -201,16 +244,14 @@ async function main() {
                             await doneBtn.click({ force: true });
                             await page.waitForTimeout(500);
                         }
-                    } catch (err) {
-                        // エラー時はスキップして高速化を維持
-                    } finally {
+                    } catch (err) {} finally {
                         await dismissAllModals(page);
                     }
                 }
             }
 
             // ==========================================
-            // 2. コメント巡回（高速・2回ずつ）
+            // 2. コメント巡回
             // ==========================================
             const COMMENT_ROUNDS = 25;
 
@@ -277,13 +318,12 @@ async function main() {
                 }
             }
 
-            console.log('\n🎉 超高速での全ての処理が完了しました！');
+            console.log('\n🎉 全ての処理が完了しました！');
             await page.screenshot({ path: `screenshot-success-${index + 1}.png`, fullPage: true });
 
             success = true;
             await browser.close();
 
-            // 🔗 成功したらDiscordに通知してループ終了
             await sendDiscordNotification(TARGET_BOARD_URL, index + 1);
             break;
 

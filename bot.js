@@ -108,7 +108,7 @@ async function main() {
         process.exit(1);
     }
 
-// 🔑 クッキーJSON（AUTH_JSONS）を安全に改行区切りで取得
+    // 🔑 クッキーJSON（AUTH_JSONS）を安全に改行区切りで取得
     const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
     const authList = authsEnv
         .split('\n')
@@ -129,15 +129,18 @@ async function main() {
 
         console.log(`\n🔑 アカウント #${accountNum} のクッキーデータでログインを試行します...`);
         
-        // パースエラーを防ぐため、受け取った生文字列をそのまま storageState 形式にラップして書き出す
-        const formattedState = `{\n  "cookies": ${authData},\n  "origins": []\n}`;
-        fs.writeFileSync(authFile, formattedState);        
-        // PlaywrightのstorageState形式（配列をラップしたオブジェクト）に整形して保存
-        const formattedState = {
-            cookies: JSON.parse(authData),
-            origins: []
-        };
-        fs.writeFileSync(authFile, JSON.stringify(formattedState, null, 2));
+        // PlaywrightのstorageState形式（配列をラップしたオブジェクト）に安全に変換して保存
+        try {
+            const parsedCookies = JSON.parse(authData);
+            const formattedState = {
+                cookies: parsedCookies,
+                origins: []
+            };
+            fs.writeFileSync(authFile, JSON.stringify(formattedState, null, 2));
+        } catch (e) {
+            console.error(`❌ アカウント #${accountNum} のクッキーJSONのパースに失敗しました:`, e.message);
+            continue;
+        }
 
         const browser = await chromium.launch({ 
             headless: true,

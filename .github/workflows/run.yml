@@ -36,7 +36,9 @@ jobs:
         env:
           AUTH_JSON: ${{ secrets.AUTH_JSON }}
           TARGET_URL: ${{ inputs.target_url }}
-          CUSTOM_MESSAGE: ${{ inputs.message }}
+          TOPIC_MESSAGE: ${{ inputs.message }}
+          COMMENT_MESSAGE: ${{ inputs.message }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: スクリーンショットの保存（Artifacts）
         uses: actions/upload-artifact@v4

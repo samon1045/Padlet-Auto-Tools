@@ -3,31 +3,24 @@ const path = require('path');
 const fs = require('fs');
 
 // 📝 設定値
-// GitHub Actionsの入力（inputs.message）や環境変数をしっかり受け取る
-const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'm';
-const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
-const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
+const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
+const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
+const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
-DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
-// Discordに通知を送る関数
+// 🔗 Discordに通知を送る関数
 async function sendDiscordNotification(boardUrl) {
     if (!DISCORD_WEBHOOK_URL) {
         console.log('⚠️ DISCORD_WEBHOOK_URL が設定されていないため、Discord通知をスキップします。');
         return;
     }
 
-try {
-        // パドレットの処理いろいろ...
-        console.log('\n🎉 全ての処理が完了しました！');
-    } catch (error) {
-        console.error('エラーが発生しました:', error.message);
-    } finally {
-        // 成功してもエラーで止まっても、最後に必ずブラウザを閉じてDiscordに通知する！
-        await sendDiscordNotification(TARGET_BOARD_URL);
-        await browser.close();
-    }
+    try {
+        const payload = {
+            content: `🛡️ **Padletモデレーションボット通知**\n以下のボードで処理が実行されました！\n🔗 ${boardUrl}`
+        };
 
         const response = await fetch(DISCORD_WEBHOOK_URL, {
             method: 'POST',
@@ -117,6 +110,7 @@ async function main() {
             throw new Error('TARGET_URLが指定されていません。');
         }
 
+        console.log(`設定されたメッセージを使用します -> [ ${COMMENT_MESSAGE} ]`);
         console.log('Padletボードに高速アクセス中...');
         await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(1500);
@@ -130,7 +124,7 @@ async function main() {
         // ==========================================
         // 1. 新規投稿作成（高速・2回ずつ）
         // ==========================================
-        const TOPIC_ROUNDS = 10;
+        const TOPIC_ROUNDS = 2;
 
         for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
             console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
@@ -188,7 +182,7 @@ async function main() {
         // ==========================================
         // 2. コメント巡回（高速・2回ずつ）
         // ==========================================
-        const COMMENT_ROUNDS = 20;
+        const COMMENT_ROUNDS = 2;
 
         for (let round = 1; round <= COMMENT_ROUNDS; round++) {
             console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);
@@ -238,7 +232,7 @@ async function main() {
                         const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                         const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                         if (nameInput && doneBtn && await nameInput.isVisible()) {
-                            await nameInput.fill('さーもん 万歳！！');
+                            await nameInput.fill('さーもん万歳！！');
                             await doneBtn.click({ force: true });
                             await page.waitForTimeout(500);
                         }
@@ -256,12 +250,11 @@ async function main() {
         console.log('\n🎉 超高速での全ての処理が完了しました！');
         await page.screenshot({ path: 'screenshot-success.png', fullPage: true });
 
-        // 🔗 処理が完了したボードのURLをDiscordに通知！
-        await sendDiscordNotification(TARGET_BOARD_URL);
-
     } catch (error) {
         console.error('エラーが発生しましたが処理を継続します:', error.message);
     } finally {
+        // 🔗 処理の最後に必ずDiscordに通知を送る！
+        await sendDiscordNotification(TARGET_BOARD_URL);
         await browser.close();
     }
 }

@@ -89,79 +89,39 @@ async function attachImage(page) {
     } catch (err) {}
 }
 
-// 🔐 自動ログイン処理関数
-async function loginAndSaveSession(page, email, password, authFile) {
-    console.log(`🌐 ログインページへアクセス中... (${email})`);
-    await page.goto('https://padlet.com/login', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
-
-    try {
-        const emailInput = await page.$('input[type="email"], input[name="email"], input[placeholder*="Email"]');
-        if (emailInput) {
-            await emailInput.fill(email);
-            await page.waitForTimeout(500);
-        }
-
-        const passInput = await page.$('input[type="password"], input[name="password"], input[placeholder*="Password"]');
-        if (passInput) {
-            await passInput.fill(password);
-            await page.waitForTimeout(500);
-        }
-
-        const submitBtn = await page.$('button[type="submit"], button:has-text("Log in"), button:has-text("ログイン")');
-        if (submitBtn) {
-            await submitBtn.click();
-            await page.waitForTimeout(5000); // ログイン完了待ちを長めに
-        }
-
-        // セッション状態をファイルに保存
-        const storageState = await page.context().storageState();
-        fs.writeFileSync(authFile, JSON.stringify(storageState));
-        console.log('✅ ログイン成功＆セッションを保存しました！');
-    } catch (err) {
-        console.error('❌ ログイン処理中にエラーが発生しました:', err.message);
-        throw err;
-    }
-}
-
 async function main() {
     if (!TARGET_BOARD_URL) {
         console.error('❌ TARGET_URLが指定されていません。');
         process.exit(1);
     }
 
-    const accountsEnv = process.env.ACCOUNTS || process.env.AUTH_JSONS || '';
-    const accountList = accountsEnv
+    // 🔑 クッキーJSON（AUTH_JSONS）を安全に改行区切りで取得
+    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
+    const authList = authsEnv
         .split('\n')
         .map(l => l.replace(/\r/g, '').trim())
-        .filter(l => l.length > 0 && l.includes(':'));
+        .filter(l => l.length > 0 && l.startsWith('[') && l.endsWith(']'));
 
-    if (accountList.length === 0) {
-        console.log('⚠️ 有効なアカウント情報が見つかりません。');
+    if (authList.length === 0) {
+        console.log('⚠️ 有効なクッキーデータが見つかりません。');
         process.exit(1);
     }
 
     let success = false;
 
-    for (let index = 0; index < accountList.length; index++) {
-        const accountInfo = accountList[index];
+    for (let index = 0; index < authList.length; index++) {
+        const authData = authList[index];
         const authFile = `auth-${index}.json`;
-        const parts = accountInfo.split(':');
-        const email = parts[0];
-        const password = parts.slice(1).join(':');
 
-        console.log(`\n🔑 アカウント #${index + 1} (${email}) の処理を開始します...`);
+        console.log(`\n🔑 アカウント #${index + 1} のクッキーデータでログインを試行します...`);
+        fs.writeFileSync(authFile, authData);
 
         const browser = await chromium.launch({ 
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         
-        // 既存のセッションファイルがあれば読み込む
-        const hasStorageState = fs.existsSync(authFile);
-        const context = await browser.newContext(
-            hasStorageState ? { storageState: authFile } : {}
-        );
+        const context = await browser.newContext({ storageState: authFile });
         const page = await context.newPage();
 
         try {
@@ -169,23 +129,9 @@ async function main() {
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(2000);
 
-            // 未ログイン状態（ログイン画面や登録必須画面）の場合
+            // 未ログイン画面に飛ばされていないかチェック
             if (page.url().includes('login') || page.url().includes('verify') || await page.$('text=registered users only')) {
-                console.log('⚠️ ログインが必要です。自動ログインを実行します...');
-                if (hasStorageState) {
-                    // 古いセッションファイルを削除
-                    fs.unlinkSync(authFile);
-                }
-                await loginAndSaveSession(page, email, password, authFile);
-                
-                // 再度ボードへ移動
-                console.log('ボードへ再アクセス中...');
-                await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-                await page.waitForTimeout(2000);
-            }
-
-            if (page.url().includes('login') || await page.$('text=registered users only')) {
-                throw new Error('ログインに失敗したか、ボードにアクセスできません。');
+                throw new Error('クッキーの有効期限が切れています。');
             }
 
             console.log('ボードの読み込み完了！処理を開始します...');

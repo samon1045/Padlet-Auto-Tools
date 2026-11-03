@@ -178,34 +178,32 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクションへの新規投稿作成（正確なボタンリスト取得方式）
+            // 1. 各セクションへの新規投稿作成（カラム構造の厳密な限定版）
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // セクションのカラム内にある「＋」ボタンのみを正確に絞り込むセレクタ
-            // 各セクションのヘッダーや下部にある独立した追加ボタンを狙う
-            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button';
-            let addButtons = await page.$$(addButtonsSelector);
+            // Padletのボード上で「各セクションの列（カラム）」を特定する正確なセレクタ
+            // ボード全体のカラムを表す要素に絞り込むことで、100個以上の誤検出を防ぐ
+            const columns = await page.$$('.board-container section, [data-section-id], .section-container');
+            console.log(`🔍 検出された実際のセクション（カラム）数: ${columns.length}個`);
 
-            // もし専用クラスで取れない場合のフォールバック（画面上にある明示的な「＋」ボタン）
-            if (addButtons.length === 0 || addButtons.length > 20) {
-                addButtons = await page.$$('button:has-text("+")');
-            }
+            const targetCount = columns.length > 0 ? columns.length : 6; // 万が一取得できない場合のフォールバック（通常6列）
 
-            console.log(`🔍 検出された実際のセクション投稿ボタン数: ${addButtons.length}個`);
-
-            for (let i = 0; i < addButtons.length; i++) {
+            for (let i = 0; i < targetCount; i++) {
                 try {
                     await dismissAllModals(page);
 
-                    // ボタン要素を毎回安全に再取得
-                    let currentBtns = await page.$$(addButtonsSelector);
-                    if (currentBtns.length === 0 || currentBtns.length > 20) {
-                        currentBtns = await page.$$('button:has-text("+")');
+                    // カラム要素を毎回再取得
+                    const freshCols = await page.$$('.board-container section, [data-section-id], .section-container');
+                    const targetCol = freshCols[i];
+
+                    let targetBtn = null;
+                    if (targetCol) {
+                        // 各カラム内部にある「＋」または投稿追加ボタンを探す
+                        targetBtn = await targetCol.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                     }
 
-                    const targetBtn = currentBtns[i];
                     if (!targetBtn) {
                         console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                         continue;
@@ -214,7 +212,7 @@ async function main() {
                     console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
                     await targetBtn.scrollIntoViewIfNeeded();
                     
-                    // クリック時にエラーオーバーレイがある場合は消去してリトライ
+                    // クリック時にブロック要素があれば消去して再試行
                     await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
                         await dismissAllModals(page);
                         await targetBtn.click({ force: true });

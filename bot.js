@@ -3,9 +3,9 @@ const path = require('path');
 const fs = require('fs');
 
 // 📝 設定値
-const TOPIC_TITLE = process.env.TOPIC_TITLE || 'お前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
-const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || 'お前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
-const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'お前らやりませんね杉！！ ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～ww もっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
+const TOPIC_TITLE = process.env.TOPIC_TITLE || 'm';
+const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || 'm';
+const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || 'm';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 
@@ -94,7 +94,7 @@ async function main() {
         // ==========================================
         // 1. 新規投稿作成（高速・2回ずつ）
         // ==========================================
-        const TOPIC_ROUNDS =10;
+        const TOPIC_ROUNDS =2;
 
         for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
             console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
@@ -152,7 +152,7 @@ async function main() {
         // ==========================================
         // 2. コメント巡回（高速・2回ずつ）
         // ==========================================
-        const COMMENT_ROUNDS = 20;
+        const COMMENT_ROUNDS = 2;
 
         for (let round = 1; round <= COMMENT_ROUNDS; round++) {
             console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);

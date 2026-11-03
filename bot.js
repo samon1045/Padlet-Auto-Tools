@@ -168,13 +168,10 @@ async function main() {
         });
         
         const context = await browser.newContext({ storageState: authFile });
-
-        // 🔍 【デバッグ用】Playwrightのトレース記録を開始
         await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
 
         const page = await context.newPage();
 
-        // 🔍 【デバッグ用】ネットワークのエラー（4xx, 5xx）をコンソールに出力
         page.on('response', response => {
             if (response.status() >= 400) {
                 console.log(`⚠️ ネットワークエラー検知 [${response.status()}] : ${response.url()}`);
@@ -203,7 +200,6 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 セクションヘッダー付近にある「＋」ボタンのみを特定（右下の全体投稿ボタンや不要な要素を厳格に除外）
                 let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 
                 const uniqueColumnsBtns = [];
@@ -212,7 +208,6 @@ async function main() {
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // 💡 条件: 各セクションの上部にある「＋」ボタン（Y座標: 50〜300px）、かつ画面右下の全体投稿ボタンを完全に除外するため X < 1000 に限定
                         if (box && box.y > 50 && box.y < 300 && box.x < 1000) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
@@ -320,7 +315,6 @@ async function main() {
 
                     } catch (err) {
                         console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
-                        // 🔍 【デバッグ用】エラー瞬間のDOMをファイルに出力
                         const htmlContent = await page.content();
                         fs.writeFileSync(`error-dom-round${round}-sec${i+1}-${Date.now()}.html`, htmlContent);
                         await closeAllModalsAndPopups(page);
@@ -369,7 +363,7 @@ async function main() {
 
                         let editor = await page.$('div[contenteditable="true"], textarea');
                         if (!editor) {
-                            editor = await page.waitForSelector('div[contenteditable="true'], textarea', { timeout: 3000 }).catch(() => null);
+                            editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
                         }
 
                         if (editor) {
@@ -401,8 +395,6 @@ async function main() {
             }
 
             await takeStepScreenshot(page, 'success-final', accountNum);
-
-            // 🔍 【デバッグ用】正常終了時のトレース保存
             await context.tracing.stop({ path: 'trace-success.zip' });
 
             success = true;
@@ -415,7 +407,6 @@ async function main() {
             console.error(`❌ アカウント #${accountNum} でエラーが発生しました:`, error.message);
             await takeStepScreenshot(page, 'error-occurred', accountNum);
 
-            // 🔍 【デバッグ用】エラー発生時のトレース保存
             try {
                 await context.tracing.stop({ path: `trace-error-acc${accountNum}.zip` });
                 console.log(`📦 エラー時のトレースファイル保存: trace-error-acc${accountNum}.zip`);

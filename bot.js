@@ -178,7 +178,7 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 新規投稿作成（全セクションに画像付き投稿）
+            // 1. 新規投稿作成（各セクションへの確実な投稿・公開処理）
             // ==========================================
             const TOPIC_ROUNDS = 1;
 
@@ -214,20 +214,29 @@ async function main() {
                         if (bodyEditor) {
                             await bodyEditor.click();
                             await page.keyboard.insertText(TOPIC_MESSAGE);
-                            await page.waitForTimeout(300);
+                            await page.waitForTimeout(500);
                         }
 
                         // 画像添付
                         await attachImageForTopic(page);
 
-                        // 「公開」ボタンをクリック ＋ Enterキー送信
-                        const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
-                        if (publishBtn && await publishBtn.isVisible()) {
-                            await publishBtn.click({ force: true });
-                            console.log(`✅ [セクション ${i + 1}] 投稿を公開しました！`);
+                        // 「公開」または「Publish」ボタンを確実に探してクリック
+                        let published = false;
+                        const publishButtons = await page.$$('button:has-text("公開"), button:has-text("Publish")');
+                        for (const pBtn of publishButtons) {
+                            if (await pBtn.isVisible()) {
+                                await pBtn.click({ force: true });
+                                published = true;
+                                break;
+                            }
                         }
-                        await page.keyboard.press('Enter');
-                        await page.waitForTimeout(3000);
+
+                        if (!published) {
+                            await page.keyboard.press('Control+Enter');
+                        }
+
+                        await page.waitForTimeout(3500); 
+                        console.log(`✅ [セクション ${i + 1}] 投稿を公開しました！`);
 
                         if (i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
@@ -241,7 +250,7 @@ async function main() {
             }
 
             // ==========================================
-            // 2. コメント巡回
+            // 2. コメント巡回（レートリミット対策強化版）
             // ==========================================
             const COMMENT_ROUNDS = 1;
 
@@ -249,8 +258,15 @@ async function main() {
                 console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);
                 let processedCount = 0;
 
-                while (processedCount < 15) {
+                while (processedCount < 10) { // 上限を10件に調整し安全性を確保
                     await dismissAllModals(page);
+
+                    // レートリミットのエラーメッセージ検知
+                    const rateLimitAlert = await page.$('text=コメントの回数が多すぎます');
+                    if (rateLimitAlert && await rateLimitAlert.isVisible()) {
+                        console.log('⚠️ レートリミット（連投制限）を検知したため、コメント巡回を中断します。');
+                        break;
+                    }
 
                     const commentSelectors = [
                         'button:has-text("Add comment")',
@@ -268,7 +284,7 @@ async function main() {
 
                     try {
                         await targetBtn.click({ force: true });
-                        await page.waitForTimeout(800);
+                        await page.waitForTimeout(1000);
 
                         let editor = await page.$('div[contenteditable="true"], textarea');
                         if (!editor) {
@@ -278,10 +294,10 @@ async function main() {
                         if (editor) {
                             await editor.click();
                             await page.keyboard.insertText(COMMENT_MESSAGE);
-                            await page.waitForTimeout(300);
+                            await page.waitForTimeout(500);
 
                             await page.keyboard.press('Enter');
-                            await page.waitForTimeout(2500);
+                            await page.waitForTimeout(5000); // 💡 連投制限を防ぐためしっかり待機
                         }
 
                         processedCount++;
@@ -301,7 +317,7 @@ async function main() {
             success = true;
             await browser.close();
 
-            // 🔔 確実にDiscord通知を実行
+            // 🔔 Discord通知を実行
             await sendDiscordNotification(TARGET_BOARD_URL, accountNum);
             break;
 
@@ -310,7 +326,6 @@ async function main() {
             await takeStepScreenshot(page, 'error-occurred', accountNum);
             await browser.close();
         } finally {
-            // 一時クッキーファイルのクリーンアップ
             if (fs.existsSync(authFile)) {
                 try { fs.unlinkSync(authFile); } catch (e) {}
             }

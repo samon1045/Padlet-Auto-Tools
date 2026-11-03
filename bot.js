@@ -49,24 +49,17 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやサイドパネル、オーバーレイを完全に消去する最強のヘルパー
+// 🧹 モーダルやサイドパネル、詳細ポップアップを完全に消去する強力なヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(250);
+        await page.waitForTimeout(200);
     }
     try {
-        // 画面上の空白部分（背景）をクリックしてフォーカスを外す
-        await page.mouse.click(10, 10);
-        await page.waitForTimeout(200);
-
+        // サイドパネルの閉じるボタンや背景オーバーレイを強制削除
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], div.z-alert, div[role="dialog"]');
-            overlays.forEach(el => {
-                if (!el.closest('.board-container')) {
-                    el.remove();
-                }
-            });
+            const panels = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"]');
+            panels.forEach(el => el.remove());
         });
     } catch (e) {}
     await page.waitForTimeout(800);
@@ -201,7 +194,6 @@ async function main() {
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // 条件: Yが上部〜中層（50〜400）、かつ右端の固定ボタンエリア（X > 1100）を除外
                         if (box && box.y > 50 && box.y < 400 && box.x < 1100) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
@@ -219,7 +211,7 @@ async function main() {
 
                 for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
-                        // 💡 各セクションの処理に入る前に必ず画面を完全クリーンにする
+                        // 💡 各セクションの処理に入る前に必ず全モーダル・サイドパネルを完全消去
                         await dismissAllModals(page);
 
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -248,8 +240,6 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
                         await targetObj.btn.scrollIntoViewIfNeeded();
-                        
-                        // 💡 クリック時に他の要素にブロックされないよう強制クリックを使用
                         await targetObj.btn.click({ force: true });
                         await page.waitForTimeout(2500);
 
@@ -296,8 +286,8 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了後の待機時間を少し長めにし、確実にモーダルを消し去る
-                        await page.waitForTimeout(5000);
+                        // 💡 投稿完了直後に自動で開くサイドパネルやモーダルを確実に消し去る
+                        await page.waitForTimeout(4000);
                         await dismissAllModals(page);
                         await page.waitForTimeout(2000);
 

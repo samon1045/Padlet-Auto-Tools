@@ -3,9 +3,9 @@ const path = require('path');
 const fs = require('fs');
 
 // 📝 設定値
-const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
-const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
-const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ';
+const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'm';
+const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
+const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
 const IMAGE_PATH = path.join(__dirname, '_______.gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
@@ -94,14 +94,27 @@ async function main() {
         fs.writeFileSync('auth.json', process.env.AUTH_JSON);
     }
 
-    const hasStorageState = fs.existsSync('auth.json');
-    const browser = await chromium.launch({ 
+const browser = await chromium.launch({ 
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
     
+    // 👇 ここで使う auth.json を切り替える！
+    let authFile = 'auth.json';
+    if (process.env.AUTH_CHOICE === 'sub') {
+        authFile = 'auth-sub.json';
+        if (process.env.AUTH_JSON_SUB) {
+            fs.writeFileSync(authFile, process.env.AUTH_JSON_SUB);
+        }
+    } else {
+        if (process.env.AUTH_JSON) {
+            fs.writeFileSync(authFile, process.env.AUTH_JSON);
+        }
+    }
+
+    const hasStorageState = fs.existsSync(authFile);
     const context = await browser.newContext(
-        hasStorageState ? { storageState: 'auth.json' } : {}
+        hasStorageState ? { storageState: authFile } : {}
     );
     const page = await context.newPage();
 
@@ -124,7 +137,7 @@ async function main() {
         // ==========================================
         // 1. 新規投稿作成（高速・2回ずつ）
         // ==========================================
-        const TOPIC_ROUNDS = 15;
+        const TOPIC_ROUNDS = 2;
 
         for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
             console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
@@ -182,7 +195,7 @@ async function main() {
         // ==========================================
         // 2. コメント巡回（高速・2回ずつ）
         // ==========================================
-        const COMMENT_ROUNDS = 25;
+        const COMMENT_ROUNDS = 2;
 
         for (let round = 1; round <= COMMENT_ROUNDS; round++) {
             console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);

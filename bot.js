@@ -95,28 +95,31 @@ async function main() {
         process.exit(1);
     }
 
-// 🔑 複数の認証情報（AUTH_JSONS）を安全なJSON配列として取得
-    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '[]';
+    // 🔑 複数の認証情報（AUTH_JSONS）を改行区切りで安全に取得
+    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
     let authList = [];
 
-    try {
-        const parsed = JSON.parse(authsEnv);
-        if (Array.isArray(parsed)) {
-            // 配列の中身がさらに配列（複数アカウント）の場合と、単体のオブジェクトの場合に対応
-            authList = parsed.map(item => typeof item === 'object' ? JSON.stringify(item) : item);
+    // 改行で分割し、それぞれの行が有効なJSONか（またはそのままauthデータとして使えるか）をチェック
+    const lines = authsEnv.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
+    
+    for (const line of lines) {
+        try {
+            // 各行が独立したJSON配列であることを確認して登録
+            const parsed = JSON.parse(line);
+            if (Array.isArray(parsed)) {
+                authList.push(JSON.stringify(parsed));
+            }
+        } catch (e) {
+            console.warn('⚠️ 一部の行のJSONパースに失敗しましたがスキップします:', e.message);
         }
-    } catch (e) {
-        console.error('⚠️ AUTH_JSONS のJSONパースに失敗しました。改行区切りとしてフォールバックします:', e.message);
-        authList = authsEnv
-            .split('\n')
-            .map(line => line.replace(/\r/g, '').trim())
-            .filter(line => line.length > 0);
     }
 
     if (authList.length === 0) {
-        console.log('⚠️ 認証情報が見つかりません。ログインなしで実行を試みます。');
+        console.log('⚠️ 有効な認証情報が見つかりません。ログインなしで実行を試みます。');
         authList.push('');
     }
+
+    let success = false;
 
     // 🔄 アカウントを順番にループして試す（枯渇対策ローテーション）
     for (let index = 0; index < authList.length; index++) {

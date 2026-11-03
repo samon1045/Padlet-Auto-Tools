@@ -57,7 +57,7 @@ async function dismissAllModals(page) {
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal'], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -188,33 +188,51 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 セクションの列を正しく一意に取得するため、data-section-id を持つ要素だけに厳格に絞り込む
-                let columns = await page.$$('div[data-section-id]');
-                if (columns.length === 0) {
-                    columns = await page.$$('.section-container');
+                // 💡 セクション内の「＋」ボタンや追加ボタンを直接正確にリスト化する
+                // （右下の固定「＋ 投稿」ボタンを除外するため、上部にあるセクション内のボタンに限定する）
+                let sectionAddBtns = await page.$$('[data-section-id] button, .section-container button, section button, button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
+                
+                // ボタンのテキストや属性に「＋」または「add」が含まれるものだけに絞り込む
+                const validBtns = [];
+                for (const btn of sectionAddBtns) {
+                    try {
+                        const text = await btn.textContent();
+                        const ariaLabel = await btn.getAttribute('aria-label') || '';
+                        if (text.includes('+') || ariaLabel.includes('投稿を追加') || ariaLabel.includes('Add post')) {
+                            // 右下の絶対配置されている全体投稿ボタン（通常は画面右下に固定されている）を除外するため、位置やクラスをチェック
+                            const box = await btn.boundingBox();
+                            if (box && box.y < 800) { // 画面下部の固定ボタンではないもの
+                                validBtns.push(btn);
+                            }
+                        }
+                    } catch (e) {}
                 }
-                console.log(`🔍 検出された実際のセクション列数: ${columns.length}個`);
 
-                const targetCount = Math.min(columns.length, 10);
+                console.log(`🔍 検出された有効なセクション投稿ボタン数: ${validBtns.length}個`);
+
+                const targetCount = Math.min(validBtns.length, 10);
 
                 for (let i = 0; i < targetCount; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループごとにカラムを最新状態で再取得
-                        let freshColumns = await page.$$('div[data-section-id]');
-                        if (freshColumns.length === 0) {
-                            freshColumns = await page.$$('.section-container');
+                        // 毎ループごとにボタンを最新状態で再取得してクリック
+                        let freshBtns = await page.$$('[data-section-id] button, .section-container button, section button, button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
+                        const currentValidBtns = [];
+                        for (const btn of freshBtns) {
+                            try {
+                                const text = await btn.textContent();
+                                const ariaLabel = await btn.getAttribute('aria-label') || '';
+                                if (text.includes('+') || ariaLabel.includes('投稿を追加') || ariaLabel.includes('Add post')) {
+                                    const box = await btn.boundingBox();
+                                    if (box && box.y < 800) {
+                                        currentValidBtns.push(btn);
+                                    }
+                                }
+                            } catch (e) {}
                         }
-                        const targetColumn = freshColumns[i];
 
-                        if (!targetColumn) {
-                            console.log(`⚠️ セクション列 ${i + 1} が見つからないためスキップします。`);
-                            continue;
-                        }
-
-                        // そのカラムコンテナの中にある「＋」ボタンをピンポイントで取得
-                        const targetBtn = await targetColumn.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                        const targetBtn = currentValidBtns[i];
 
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);

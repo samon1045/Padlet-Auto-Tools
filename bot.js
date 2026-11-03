@@ -2,10 +2,10 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値
-const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'm';
-const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
-const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'm';
+// 📝 設定値（空文字の場合はデフォルト値をセット）
+const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
+const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
+const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
@@ -140,7 +140,6 @@ async function main() {
         console.log(`\n🔑 アカウント #${accountNum} のクッキーデータでログインを試行します...`);
         
         try {
-            // クッキーの sameSite が null の場合に Playwright が弾くのを防ぐための補正処理
             const parsedCookies = JSON.parse(authData);
             const cleanedCookies = parsedCookies.map(cookie => {
                 if (cookie.sameSite === null || (cookie.sameSite !== 'Strict' && cookie.sameSite !== 'Lax' && cookie.sameSite !== 'None')) {
@@ -198,43 +197,42 @@ async function main() {
                         if (!targetAddBtn) continue;
 
                         await targetAddBtn.click({ force: true });
-                        await page.waitForTimeout(500);
+                        await page.waitForTimeout(800);
 
-                        const titleInput = await page.$('input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
+                        // 件名（タイトル）入力欄
+                        const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
                         if (titleInput && await titleInput.isVisible()) {
+                            await titleInput.click();
                             await titleInput.fill(TOPIC_TITLE);
-                            await page.waitForTimeout(100);
+                            await page.waitForTimeout(200);
                         }
 
+                        // 本文エディタ
                         const bodyEditor = await page.$('div[contenteditable="true"], textarea');
                         if (bodyEditor) {
                             await bodyEditor.click();
                             await page.keyboard.insertText(TOPIC_MESSAGE);
-                            await page.waitForTimeout(200);
+                            await page.waitForTimeout(300);
                         }
 
+                        // 画像添付
                         await attachImage(page, accountNum);
 
-                        const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
+                        // ピンク色の「公開」ボタン、またはPublishボタン
+                        const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish"), button:has-text("投稿"), button[type="submit"]');
                         if (publishBtn && await publishBtn.isVisible()) {
                             await publishBtn.click({ force: true });
                         } else {
                             await page.keyboard.press('Enter');
                         }
-                        await page.waitForTimeout(1200);
-
-                        const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
-                        const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
-                        if (nameInput && doneBtn && await nameInput.isVisible()) {
-                            await nameInput.fill('さーもん万歳！！');
-                            await doneBtn.click({ force: true });
-                            await page.waitForTimeout(500);
-                        }
+                        await page.waitForTimeout(1500);
 
                         if (tRound === 1 && i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
                         }
-                    } catch (err) {} finally {
+                    } catch (err) {
+                        console.log('⚠️ 投稿処理中にエラー:', err.message);
+                    } finally {
                         await dismissAllModals(page);
                     }
                 }

@@ -95,19 +95,28 @@ async function main() {
         process.exit(1);
     }
 
-    // 🔑 複数の認証情報（AUTH_JSONS）を改行区切りで取得し、余分な改行コード(\r)や空白を完全に除去
-    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
-    const authList = authsEnv
-        .split('\n')
-        .map(line => line.replace(/\r/g, '').trim())
-        .filter(line => line.length > 0);
+// 🔑 複数の認証情報（AUTH_JSONS）を安全なJSON配列として取得
+    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '[]';
+    let authList = [];
+
+    try {
+        const parsed = JSON.parse(authsEnv);
+        if (Array.isArray(parsed)) {
+            // 配列の中身がさらに配列（複数アカウント）の場合と、単体のオブジェクトの場合に対応
+            authList = parsed.map(item => typeof item === 'object' ? JSON.stringify(item) : item);
+        }
+    } catch (e) {
+        console.error('⚠️ AUTH_JSONS のJSONパースに失敗しました。改行区切りとしてフォールバックします:', e.message);
+        authList = authsEnv
+            .split('\n')
+            .map(line => line.replace(/\r/g, '').trim())
+            .filter(line => line.length > 0);
+    }
 
     if (authList.length === 0) {
         console.log('⚠️ 認証情報が見つかりません。ログインなしで実行を試みます。');
         authList.push('');
     }
-
-    let success = false;
 
     // 🔄 アカウントを順番にループして試す（枯渇対策ローテーション）
     for (let index = 0; index < authList.length; index++) {

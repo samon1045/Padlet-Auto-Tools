@@ -6,7 +6,7 @@ const fs = require('fs');
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-const IMAGE_PATH = path.join(__dirname, '_______.gif');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -47,23 +47,23 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// ポップアップを閉じるヘルパー
+// 🧹 ポップアップやサイドパネル（アクティビティパネル等）を確実に閉じる/削除するヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(50);
+        await page.waitForTimeout(100);
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('.oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
             overlays.forEach(el => {
-                if (!el.closest('.board-container') && !el.closest('main')) {
-                    el.style.display = 'none';
+                if (!el.closest('.board-container')) {
+                    el.remove(); // 邪魔なパネルやオーバーレイ要素をDOMから削除してクリック遮断を防ぐ
                 }
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(200);
 }
 
 // 🖼️ 画像アップロード
@@ -182,18 +182,17 @@ async function main() {
             // ==========================================
             // 1. 新規投稿作成
             // ==========================================
-            const TOPIC_ROUNDS = 3; // 各セクションを確実に回るためラウンド数を調整
+            const TOPIC_ROUNDS = 3;
 
             for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
                 console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
                 
-                // ボード上のすべての「＋」ボタンやセクション追加ボタンを取得
+                await dismissAllModals(page);
                 const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 console.log(`🔍 検出された投稿ボタン数: ${addButtons.length}個`);
 
                 for (let i = 0; i < addButtons.length; i++) {
                     try {
-                        // 毎回確実に余計なモーダルを閉じる
                         await dismissAllModals(page);
                         
                         const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -201,11 +200,10 @@ async function main() {
 
                         if (!targetAddBtn) continue;
 
-                        // 該当するセクションの「＋」ボタンをクリック
                         await targetAddBtn.click({ force: true });
                         await page.waitForTimeout(1000);
 
-                        // 1. 件名入力
+                        // 件名入力
                         const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
                         if (titleInput) {
                             await titleInput.click();
@@ -213,7 +211,7 @@ async function main() {
                             await page.waitForTimeout(200);
                         }
 
-                        // 2. 本文入力
+                        // 本文入力
                         const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"]');
                         if (bodyEditor) {
                             await bodyEditor.click();
@@ -221,16 +219,16 @@ async function main() {
                             await page.waitForTimeout(300);
                         }
 
-                        // 3. 画像添付
+                        // 画像添付
                         await attachImage(page, accountNum);
                         await page.waitForTimeout(1000);
 
-                        // 4. 「公開」ボタンをクリックして確実に待つ
+                        // 「公開」ボタンをクリック
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
                         if (publishBtn && await publishBtn.isVisible()) {
                             await publishBtn.click({ force: true });
                             console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました！`);
-                            await page.waitForTimeout(3000); // 投稿が完全に反映されるまでしっかり待つ
+                            await page.waitForTimeout(3000);
                         } else {
                             await page.keyboard.press('Enter');
                             await page.waitForTimeout(2000);
@@ -246,6 +244,7 @@ async function main() {
                     }
                 }
             }
+
             // ==========================================
             // 2. コメント巡回
             // ==========================================

@@ -95,23 +95,18 @@ async function main() {
         process.exit(1);
     }
 
-    // 🔑 複数の認証情報（AUTH_JSONS）を改行区切りで安全に取得
-    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
+    // 🔑 複数の認証情報（AUTH_JSONS）を1つのJSON配列として安全に取得
+    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '[]';
     let authList = [];
 
-    // 改行で分割し、それぞれの行が有効なJSONか（またはそのままauthデータとして使えるか）をチェック
-    const lines = authsEnv.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
-    
-    for (const line of lines) {
-        try {
-            // 各行が独立したJSON配列であることを確認して登録
-            const parsed = JSON.parse(line);
-            if (Array.isArray(parsed)) {
-                authList.push(JSON.stringify(parsed));
-            }
-        } catch (e) {
-            console.warn('⚠️ 一部の行のJSONパースに失敗しましたがスキップします:', e.message);
+    try {
+        const parsed = JSON.parse(authsEnv);
+        if (Array.isArray(parsed)) {
+            // 配列の中身をそれぞれ文字列化してアカウントリストに格納
+            authList = parsed.map(item => typeof item === 'object' ? JSON.stringify(item) : item);
         }
+    } catch (e) {
+        console.error('⚠️ AUTH_JSONS のJSONパースに失敗しました:', e.message);
     }
 
     if (authList.length === 0) {

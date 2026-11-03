@@ -44,9 +44,7 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
         const fileName = `screenshot-acc${accountIndex}-${stepName.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
         await page.screenshot({ path: fileName, fullPage: true });
         console.log(`📸 スクリーンショット保存: ${fileName}`);
-    } catch (e) {
-        // スクショ失敗でメイン処理を止めない
-    }
+    } catch (e) {}
 }
 
 // ポップアップを閉じるヘルパー
@@ -108,12 +106,25 @@ async function main() {
         process.exit(1);
     }
 
-    // 🔑 クッキーJSON（AUTH_JSONS）を安全に改行区切りで取得
+    // 🔑 改行区切りでアカウントごとのクッキー文字列ブロックを取得
     const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
-    const authList = authsEnv
-        .split('\n')
-        .map(l => l.replace(/\r/g, '').trim())
-        .filter(l => l.length > 0 && l.startsWith('[') && l.endsWith(']'));
+    
+    // まとまったテキストから、[ で始まって ] で終わるブロックを安全に切り出す
+    const authList = [];
+    let currentBlock = '';
+    let bracketCount = 0;
+
+    for (const char of authsEnv) {
+        if (char === '[') bracketCount++;
+        if (bracketCount > 0) currentBlock += char;
+        if (char === ']') {
+            bracketCount--;
+            if (bracketCount === 0 && currentBlock.trim().length > 0) {
+                authList.push(currentBlock.trim());
+                currentBlock = '';
+            }
+        }
+    }
 
     if (authList.length === 0) {
         console.log('⚠️ 有効なクッキーデータが見つかりません。');
@@ -129,16 +140,12 @@ async function main() {
 
         console.log(`\n🔑 アカウント #${accountNum} のクッキーデータでログインを試行します...`);
         
-        // PlaywrightのstorageState形式（配列をラップしたオブジェクト）に安全に変換して保存
         try {
-            const parsedCookies = JSON.parse(authData);
-            const formattedState = {
-                cookies: parsedCookies,
-                origins: []
-            };
-            fs.writeFileSync(authFile, JSON.stringify(formattedState, null, 2));
+            // クッキーの配列部分をそのままPlaywrightのstorageState形式のファイルに書き出す
+            const formattedState = `{\n  "cookies": ${authData},\n  "origins": []\n}`;
+            fs.writeFileSync(authFile, formattedState);
         } catch (e) {
-            console.error(`❌ アカウント #${accountNum} のクッキーJSONのパースに失敗しました:`, e.message);
+            console.error(`❌ アカウント #${accountNum} のクッキーファイル書き込みに失敗しました:`, e.message);
             continue;
         }
 
@@ -155,10 +162,8 @@ async function main() {
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(3000);
 
-            // アクセス直後の状態を撮影
             await takeStepScreenshot(page, 'after-goto', accountNum);
 
-            // 未ログイン画面に飛ばされていないかチェック
             if (page.url().includes('login') || page.url().includes('verify') || await page.$('text=registered users only')) {
                 throw new Error('クッキーの有効期限が切れているか、ログインしていません。');
             }
@@ -216,7 +221,6 @@ async function main() {
                             await page.waitForTimeout(500);
                         }
 
-                        // 投稿ごとのアクション後にスクショ撮影
                         if (tRound === 1 && i === 0) {
                             await takeStepScreenshot(page, 'after-first-post', accountNum);
                         }

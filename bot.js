@@ -178,41 +178,50 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクションへの新規投稿作成
+            // 1. 各セクションの「名前（タイトル）」と「要素」を全取得して特定
             // ==========================================
-            console.log(`\n📂 【全セクションへの新規投稿開始】`);
+            console.log(`\n📂 【セクション名スキャンおよび新規投稿開始】`);
             await dismissAllModals(page);
 
-            const addButtonsSelector = 'div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]';
-            let addButtons = await page.$$(addButtonsSelector);
-            if (addButtons.length === 0 || addButtons.length > 20) {
-                addButtons = await page.$$('button:has-text("+")');
+            // ボード上の各セクションコンテナを特定
+            const sectionElements = await page.$$('div[data-section-id], .section-container, section');
+            console.log(`🔍 検出されたセクション総数: ${sectionElements.length}個`);
+
+            // セクション名とボタンのペアを格納するリスト
+            const sectionList = [];
+
+            for (let i = 0; i < sectionElements.length; i++) {
+                const el = sectionElements[i];
+                try {
+                    // セクションのタイトル（見出し文字）を取得
+                    const titleEl = await el.$('h2, h3, .section-title, [data-testid*="sectionTitle"], [contenteditable="true"]');
+                    let sectionName = titleEl ? await titleEl.textContent() : `セクション ${i + 1}`;
+                    sectionName = sectionName.trim();
+
+                    // そのセクション内にある「＋」ボタンを取得
+                    const addBtn = await el.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+
+                    if (addBtn && sectionName) {
+                        sectionList.push({ name: sectionName, button: addBtn });
+                        console.log(`  📌 発見: 「${sectionName}」`);
+                    }
+                } catch (e) {}
             }
-            console.log(`🔍 検出されたセクションの投稿ボタン数: ${addButtons.length}個`);
 
-            const targetCount = addButtons.length > 0 ? addButtons.length : 6;
+            console.log(`✨ 有効な操作対象セクション数: ${sectionList.length}個`);
 
-            for (let i = 0; i < targetCount; i++) {
+            // 取得したセクション名リストをもとに、1つずつ指名して投稿を作成していく
+            for (let i = 0; i < sectionList.length; i++) {
+                const target = sectionList[i];
                 try {
                     await dismissAllModals(page);
 
-                    let freshBtns = await page.$$(addButtonsSelector);
-                    if (freshBtns.length === 0 || freshBtns.length > 20) {
-                        freshBtns = await page.$$('button:has-text("+")');
-                    }
-                    const targetBtn = freshBtns[i];
-
-                    if (!targetBtn) {
-                        console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
-                        continue;
-                    }
-
-                    console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
-                    await targetBtn.scrollIntoViewIfNeeded();
+                    console.log(`➡️ セクション「${target.name}」に投稿を作成中...`);
+                    await target.button.scrollIntoViewIfNeeded();
                     
-                    await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
+                    await target.button.click({ force: true, timeout: 5000 }).catch(async () => {
                         await dismissAllModals(page);
-                        await targetBtn.click({ force: true });
+                        await target.button.click({ force: true });
                     });
                     await page.waitForTimeout(1500);
 
@@ -235,7 +244,7 @@ async function main() {
                     // 画像添付
                     await attachImageForTopic(page);
 
-                    // 「公開」ボタンを確実に待ってからクリック（ダメならCtrl+Enter）
+                    // 「公開」ボタンをクリック（ダメならCtrl+Enter）
                     let published = false;
                     for (let attempt = 0; attempt < 3; attempt++) {
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
@@ -256,14 +265,14 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    await page.waitForTimeout(6000); // 投稿が完全に反映されるのを待つ
-                    console.log(`✅ [セクション ${i + 1}] 投稿が完了しました！`);
+                    await page.waitForTimeout(6000); 
+                    console.log(`✅ [${target.name}] 投稿が完了しました！`);
 
                     if (i === 0) {
                         await takeStepScreenshot(page, 'after-first-post', accountNum);
                     }
                 } catch (err) {
-                    console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
+                    console.log(`⚠️ 投稿処理中エラー (${target.name}):`, err.message);
                     await dismissAllModals(page);
                 } finally {
                     await dismissAllModals(page);
@@ -271,7 +280,7 @@ async function main() {
             }
 
             // ==========================================
-            // 2. 全投稿へのコメント巡回（全要素を確実にカバー）
+            // 2. 全投稿へのコメント巡回
             // ==========================================
             console.log(`\n⚡ 【全投稿へのコメント巡回開始】`);
             let safetyLimit = 0;
@@ -286,7 +295,6 @@ async function main() {
                     break;
                 }
 
-                // 画面上にある「コメントを追加」または「Add comment」ボタンを動的に毎回再取得
                 const commentSelectors = [
                     'button:has-text("Add comment")',
                     'button:has-text("コメントを追加")',
@@ -303,7 +311,6 @@ async function main() {
                     break;
                 }
 
-                // 先頭にある「まだコメント入力欄を開いていない」ボタンを1つずつ確実に処理
                 let targetBtn = foundBtns[0];
 
                 try {
@@ -322,13 +329,12 @@ async function main() {
                         await page.waitForTimeout(600);
 
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(6000); // 連続コメントによるブロックを防ぐためのウェイト
+                        await page.waitForTimeout(6000); 
                     }
 
                     console.log(`✅ コメント投稿完了 (${safetyLimit + 1}件目)`);
                 } catch (err) {
                     console.log(`⚠️ コメント処理スキップ/エラー:`, err.message);
-                    // エラー時はモーダルを閉じて次へ進む
                     await dismissAllModals(page);
                 } finally {
                     await dismissAllModals(page);

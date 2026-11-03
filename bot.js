@@ -168,15 +168,7 @@ async function main() {
         });
         
         const context = await browser.newContext({ storageState: authFile });
-        await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
-
         const page = await context.newPage();
-
-        page.on('response', response => {
-            if (response.status() >= 400) {
-                console.log(`⚠️ ネットワークエラー検知 [${response.status()}] : ${response.url()}`);
-            }
-        });
 
         try {
             console.log('Padletボードにアクセス中...');
@@ -200,66 +192,63 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 各セクションのプラスボタンを正確に取得（右下の全体投稿ボタンや右端の要素を完全除外：X < 1000）
-                let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                // 💡 各セクション（列）の親コンテナを直接検出する
+                let sectionContainers = await page.$$('[data-testid*="section"], .board-section, div[role="region"]');
                 
-                const uniqueColumnsBtns = [];
-                const seenX = new Set();
-
-                for (const btn of allBtns) {
-                    try {
-                        const box = await btn.boundingBox();
-                        if (box && box.y > 50 && box.y < 300 && box.x < 1000) {
-                            const roundedX = Math.round(box.x / 50) * 50;
-                            if (!seenX.has(roundedX)) {
-                                seenX.add(roundedX);
-                                uniqueColumnsBtns.push({ btn, x: box.x });
-                            }
-                        }
-                    } catch (e) {}
+                // もしコンテナ要素が見つからない場合はフォールバック処理
+                if (sectionContainers.length === 0) {
+                    sectionContainers = await page.$$('div:has(> button[aria-label*="投稿を追加"]), div:has(> button[aria-label*="Add post"])');
                 }
 
-                uniqueColumnsBtns.sort((a, b) => a.x - b.x);
-                const targetColumnsBtns = uniqueColumnsBtns.slice(0, 6);
+                console.log(`🔍 検出されたセクション構造の数: ${sectionContainers.length}個`);
 
-                console.log(`🔍 検出された有効なセクション列数（最大6個）: ${targetColumnsBtns.length}個`);
+                // 最大6セクションまで順に処理
+                const maxSections = Math.min(sectionContainers.length > 0 ? sectionContainers.length : 5, 6);
 
-                for (let i = 0; i < targetColumnsBtns.length; i++) {
+                for (let i = 0; i < maxSections; i++) {
                     try {
                         await closeAllModalsAndPopups(page);
 
-                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                        const currentList = [];
-                        const currentSeenX = new Set();
+                        // 再取得して確実にインデックス指定する
+                        let currentSections = await page.$$('[data-testid*="section"], .board-section, div[role="region"]');
+                        
+                        let sectionAddBtn = null;
 
-                        for (const b of refreshBtns) {
-                            try {
-                                const box = await b.boundingBox();
-                                if (box && box.y > 50 && box.y < 300 && box.x < 1000) {
-                                    const roundedX = Math.round(box.x / 50) * 50;
-                                    if (!currentSeenX.has(roundedX)) {
-                                        currentSeenX.add(roundedX);
-                                        currentList.push({ btn: b, x: box.x });
-                                    }
-                                }
-                            } catch (e) {}
+                        if (currentSections.length > i) {
+                            // 対象セクション内部の「＋」ボタンを直接検索
+                            sectionAddBtn = await currentSections[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, button:has-text("+")');
                         }
-                        currentList.sort((a, b) => a.x - b.x);
-                        const targetObj = currentList[i];
 
-                        if (!targetObj || !targetObj.btn) {
+                        // DOM構造から取れない場合は位置リストから厳密にインデックス指定
+                        if (!sectionAddBtn) {
+                            const allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, button:has-text("+")');
+                            const validBtns = [];
+                            for (const btn of allAddBtns) {
+                                const box = await btn.boundingBox();
+                                if (box && box.y > 50 && box.y < 400 && box.x < 1000) {
+                                    validBtns.push({ btn, x: box.x });
+                                }
+                            }
+                            validBtns.sort((a, b) => a.x - b.x);
+                            if (validBtns[i]) {
+                                sectionAddBtn = validBtns[i].btn;
+                            }
+                        }
+
+                        if (!sectionAddBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
                         }
 
-                        console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
-                        await targetObj.btn.scrollIntoViewIfNeeded();
-                        
-                        const box = await targetObj.btn.boundingBox();
+                        console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
+                        await sectionAddBtn.scrollIntoViewIfNeeded();
+                        await page.waitForTimeout(500);
+
+                        const box = await sectionAddBtn.boundingBox();
                         if (box) {
                             await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
                         } else {
-                            await targetObj.btn.click({ force: true });
+                            await sectionAddBtn.click({ force: true });
                         }
                         
                         await page.waitForTimeout(2000);
@@ -316,8 +305,6 @@ async function main() {
 
                     } catch (err) {
                         console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
-                        const htmlContent = await page.content();
-                        fs.writeFileSync(`error-dom-round${round}-sec${i+1}-${Date.now()}.html`, htmlContent);
                         await closeAllModalsAndPopups(page);
                     } finally {
                         await closeAllModalsAndPopups(page);
@@ -396,7 +383,6 @@ async function main() {
             }
 
             await takeStepScreenshot(page, 'success-final', accountNum);
-            await context.tracing.stop({ path: 'trace-success.zip' });
 
             success = true;
             await browser.close();
@@ -407,12 +393,6 @@ async function main() {
         } catch (error) {
             console.error(`❌ アカウント #${accountNum} でエラーが発生しました:`, error.message);
             await takeStepScreenshot(page, 'error-occurred', accountNum);
-
-            try {
-                await context.tracing.stop({ path: `trace-error-acc${accountNum}.zip` });
-                console.log(`📦 エラー時のトレースファイル保存: trace-error-acc${accountNum}.zip`);
-            } catch (e) {}
-
             await browser.close();
         } finally {
             if (fs.existsSync(authFile)) {

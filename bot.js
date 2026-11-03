@@ -6,7 +6,7 @@ const fs = require('fs');
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-const IMAGE_PATH = path.join(__dirname, '_______.gif');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -183,7 +183,6 @@ async function main() {
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // Padletの各セクション（カラム）要素を確実に取得する
             const sectionElements = await page.$$('section, div[data-section-id], .section-container, div.flex-col > div.relative');
             const sectionCount = sectionElements.length > 0 ? sectionElements.length : 6;
             console.log(`🔍 検出されたセクション数: ${sectionCount}個`);
@@ -192,7 +191,6 @@ async function main() {
                 try {
                     await dismissAllModals(page);
 
-                    // セクション要素経由、または全体から確実に対応する「＋」ボタンを取得
                     const currentSections = await page.$$('section, div[data-section-id], .section-container, div.flex-col > div.relative');
                     let targetBtn = null;
 
@@ -234,24 +232,33 @@ async function main() {
                     // 画像添付
                     await attachImageForTopic(page);
 
-                    // 💡 「公開」または「Publish」ボタンを確実に見つけてクリックする（見つからなければEnter）
+                    // 💡 「公開」ボタンが有効になるのを待って確実にクリックする処理
+                    await page.waitForTimeout(1000);
                     let published = false;
-                    const publishButtons = await page.$$('button:has-text("公開"), button:has-text("Publish")');
-                    for (const pBtn of publishButtons) {
-                        if (await pBtn.isVisible()) {
-                            await pBtn.click({ force: true });
-                            published = true;
-                            break;
+                    
+                    // 「公開」または「Publish」ボタンを繰り返し探してクリックを試みる
+                    for (let attempt = 0; attempt < 5; attempt++) {
+                        const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
+                        if (publishBtn) {
+                            const isDisabled = await publishBtn.evaluate(el => el.disabled || el.getAttribute('aria-disabled') === 'true');
+                            if (!isDisabled) {
+                                await publishBtn.click({ force: true });
+                                published = true;
+                                console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました。`);
+                                break;
+                            }
                         }
+                        await page.waitForTimeout(500);
                     }
 
+                    // 万が一ボタンが押せなかった場合はキーボードショートカット（Control/Meta + Enter）で送信
                     if (!published) {
                         await page.keyboard.press('Control+Enter');
+                        console.log(`⚠️ [セクション ${i + 1}] ショートカット（Ctrl+Enter）で送信を試みました。`);
                     }
 
-                    // 💡 投稿が確実にボードに反映されるまで長めに待機
+                    // 💡 投稿が確実に反映されるまで待機
                     await page.waitForTimeout(5000); 
-                    console.log(`✅ [セクション ${i + 1}] 投稿の公開が完了しました！`);
 
                     if (i === 0) {
                         await takeStepScreenshot(page, 'after-first-post', accountNum);

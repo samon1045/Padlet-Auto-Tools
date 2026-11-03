@@ -166,7 +166,7 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(6000); // ボード全体の完全な描画をしっかり待つ
+            await page.waitForTimeout(6000);
 
             await takeStepScreenshot(page, 'after-goto', accountNum);
 
@@ -178,41 +178,51 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクションへの新規投稿作成（確実なDOM再スキャン方式）
+            // 1. 各セクション単位で名前と専用＋ボタンを完全分離して取得
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // 各セクションの「＋」ボタンを確実に特定するためのセレクタ群
-            const addButtonsSelector = 'div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button:has-text("+")';
-            
-            let initialBtns = await page.$$(addButtonsSelector);
-            console.log(`🔍 検出されたセクションの投稿ボタン候補数: ${initialBtns.length}個`);
+            // ボード上の各セクション列（カラム）を正確に取得
+            const sectionContainers = await page.$$('div[data-section-id], .section-container, section');
+            console.log(`🔍 検出されたセクション列数: ${sectionContainers.length}個`);
 
-            // セクションの数に合わせて安全にループ（最大でも一般的なボードのセクション数に対応）
-            const totalLoops = Math.min(Math.max(initialBtns.length, 1), 20);
+            const sectionsData = [];
 
-            for (let i = 0; i < totalLoops; i++) {
+            for (let i = 0; i < sectionContainers.length; i++) {
+                const container = sectionContainers[i];
+                try {
+                    // 各セクションのタイトルを取得
+                    const titleEl = await container.$('h2, h3, .section-title, [data-testid*="sectionTitle"]');
+                    let sectionName = titleEl ? await titleEl.textContent() : `セクション ${i + 1}`;
+                    sectionName = sectionName.trim();
+
+                    // 💡 「右下の全体投稿ボタン」を完全に除外するため、このカラムコンテナ内の要素だけに絞る
+                    const addBtn = await container.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+
+                    if (addBtn) {
+                        sectionsData.push({ name: sectionName, button: addBtn });
+                        console.log(`  📌 対象セクション登録: 「${sectionName}」`);
+                    }
+                } catch (e) {}
+            }
+
+            console.log(`✨ 有効なセクション対象数: ${sectionsData.length}個`);
+
+            // 取得した各セクションを順番に確実に指名して投稿を作成
+            for (let i = 0; i < sectionsData.length; i++) {
+                const target = sectionsData[i];
                 try {
                     await dismissAllModals(page);
 
-                    // 毎ループごとにボタンを最新状態で再取得し、インデックス指定で確実に狙う
-                    const currentBtns = await page.$$(addButtonsSelector);
-                    const targetBtn = currentBtns[i];
-
-                    if (!targetBtn) {
-                        console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないため、このインデックスをスキップします。`);
-                        continue;
-                    }
-
-                    console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
-                    await targetBtn.scrollIntoViewIfNeeded();
+                    console.log(`➡️ セクション「${target.name}」に投稿を作成中...`);
+                    await target.button.scrollIntoViewIfNeeded();
                     
-                    await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
+                    await target.button.click({ force: true, timeout: 5000 }).catch(async () => {
                         await dismissAllModals(page);
-                        await targetBtn.click({ force: true });
+                        await target.button.click({ force: true });
                     });
-                    await page.waitForTimeout(2000); // モーダルが開くのを少し長めに待機
+                    await page.waitForTimeout(2000);
 
                     // 件名入力
                     const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
@@ -254,14 +264,14 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    await page.waitForTimeout(7000); // 投稿がサーバーに反映されてボードに戻るのを確実に待つ
-                    console.log(`✅ [セクション ${i + 1}] 投稿が完了しました！`);
+                    await page.waitForTimeout(7000); 
+                    console.log(`✅ [${target.name}] 投稿が完了しました！`);
 
                     if (i === 0) {
                         await takeStepScreenshot(page, 'after-first-post', accountNum);
                     }
                 } catch (err) {
-                    console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
+                    console.log(`⚠️ 投稿処理中エラー (${target.name}):`, err.message);
                     await dismissAllModals(page);
                 } finally {
                     await dismissAllModals(page);

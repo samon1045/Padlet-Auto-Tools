@@ -2,11 +2,12 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値
+// 📝 設定値（元のファイル名に戻して確実に検出させます）
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-const IMAGE_PATH = path.join(__dirname, 'animation.gif'); // ※必要に応じてファイル名を合わせてください
+
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif'); // 💡 元のファイル名に戻しました
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -38,7 +39,7 @@ async function sendDiscordNotification(boardUrl, accountIndex) {
     }
 }
 
-// 📸 スクリーンショット保存用（ファイル名が重複して上書きされないよう、一意のIDやタイムスタンプを付与）
+// 📸 スクリーンショット保存用
 async function takeStepScreenshot(page, stepName, accountIndex) {
     try {
         const timestamp = Date.now();
@@ -67,7 +68,7 @@ async function dismissAllModals(page) {
     await page.waitForTimeout(500);
 }
 
-// 🖼️ 新規投稿用の画像アップロード処理
+// 🖼️ 新規投稿用の画像アップロード処理（堅牢版）
 async function attachImageForTopic(page) {
     if (!fs.existsSync(IMAGE_PATH)) {
         console.log('⚠️ アップロード用の画像ファイルが見つからないため、画像添付をスキップします:', IMAGE_PATH);
@@ -75,13 +76,14 @@ async function attachImageForTopic(page) {
     }
 
     try {
-        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
+        // 画像アイコンやファイル追加ボタンを探してクリック
+        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル"), button[aria-label*="アップロード"]');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
             await page.waitForTimeout(1000);
         }
 
-        const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"]');
+        const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"], button:has-text("ファイル")');
         if (uploadOption) {
             const [fileChooser] = await Promise.all([
                 page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null),
@@ -179,7 +181,7 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクションの名称をベースに、毎ループごとに要素を再取得して確実に投稿
+            // 1. 各セクションの名称をベースに投稿作成
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
@@ -277,7 +279,6 @@ async function main() {
                     await page.waitForTimeout(8000); 
                     console.log(`✅ [${targetName}] 投稿が完了しました！`);
 
-                    // 💡 セクションごとにユニークな名前でスクリーンショットを保存
                     await takeStepScreenshot(page, `post-${targetName}`, accountNum);
 
                 } catch (err) {

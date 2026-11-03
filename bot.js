@@ -95,11 +95,11 @@ async function main() {
         process.exit(1);
     }
 
-    // 🔑 複数の認証情報（AUTH_JSONS あるいは単体の AUTH_JSON）を改行区切りで取得
+    // 🔑 複数の認証情報（AUTH_JSONS）を改行区切りで取得し、余分な改行コード(\r)や空白を完全に除去
     const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
     const authList = authsEnv
         .split('\n')
-        .map(line => line.trim())
+        .map(line => line.replace(/\r/g, '').trim())
         .filter(line => line.length > 0);
 
     if (authList.length === 0) {
@@ -109,7 +109,7 @@ async function main() {
 
     let success = false;
 
-    // 🔄 アカウントを順番にループして試す（枯渇対策）
+    // 🔄 アカウントを順番にループして試す（枯渇対策ローテーション）
     for (let index = 0; index < authList.length; index++) {
         const authData = authList[index];
         const authFile = `auth-${index}.json`;

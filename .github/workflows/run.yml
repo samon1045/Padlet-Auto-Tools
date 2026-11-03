@@ -37,7 +37,7 @@ jobs:
           AUTH_JSON: ${{ secrets.AUTH_JSON }}
           TARGET_URL: ${{ inputs.target_url }}
           TOPIC_MESSAGE: ${{ inputs.message }}
-          COMMENT_MESSAGE: ${{ inputs.message }}
+          COMMENT_MESSAGE: ${{ inputs.message }} 
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: スクリーンショットの保存（Artifacts）

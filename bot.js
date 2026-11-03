@@ -76,7 +76,7 @@ async function attachImageForTopic(page) {
     }
 
     try {
-        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル"), button[aria-label*="アップ'], button[data-testid*="attachment"]');
+        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル"), button[aria-label*="アップロード"], button[data-testid*="attachment"]');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
             await page.waitForTimeout(1000);
@@ -90,7 +90,7 @@ async function attachImageForTopic(page) {
             ]);
             if (fileChooser) {
                 await fileChooser.setFiles(IMAGE_PATH);
-                await page.waitForTimeout(4000); // 画像のプレビュー表示を長めに待つ
+                await page.waitForTimeout(4000);
                 return;
             }
         }
@@ -212,6 +212,7 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
                         await targetBtn.scrollIntoViewIfNeeded();
+                        
                         await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
                             await dismissAllModals(page);
                             await targetBtn.click({ force: true });
@@ -237,7 +238,7 @@ async function main() {
                         // 画像添付
                         await attachImageForTopic(page);
 
-                        // 💡 「公開」ボタンを確実に押し、ボタンが消える（モーダルが閉じる）までしっかり待機する
+                        // 「公開」ボタンをクリック
                         let published = false;
                         for (let attempt = 0; attempt < 5; attempt++) {
                             const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
@@ -257,13 +258,11 @@ async function main() {
                             await page.waitForTimeout(800);
                         }
 
-                        // 万が一「公開」ボタンが押せなかった場合のフォールバック
                         if (!published) {
                             console.log('⚠️ 「公開」ボタンが見つからないため、Ctrl+Enterで送信を試みます。');
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // モダールの完全な消失とデータの反映を長めに待つ
                         await page.waitForTimeout(6000);
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 

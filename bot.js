@@ -51,7 +51,7 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(150);
+        await page.waitForTimeout(100);
     }
     try {
         await page.evaluate(() => {
@@ -178,23 +178,39 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクションへの新規投稿作成（確実なループ処理）
+            // 1. 各セクション（カラム）を正確に特定して順次投稿
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, button:has-text("+"), div.section-add-button';
-            const initialBtns = await page.$$(addButtonsSelector);
-            const totalSections = initialBtns.length > 0 ? initialBtns.length : 6;
-            console.log(`🔍 検出されたセクション投稿ボタン数: ${totalSections}個`);
+            // Padletのカラム要素を特定する堅牢なセレクタ
+            const sectionSelector = 'section, div[data-section-id], .section-container, div.flex-col > div.relative';
+            let sectionCount = await page.$$eval(sectionSelector, els => els.length);
+            
+            // 万が一セクション要素がうまく取れない場合は、画面内の「＋」ボタンの数を基準にする
+            if (sectionCount === 0) {
+                const fallbackBtns = await page.$$('button:has-text("+"), div.section-add-button');
+                sectionCount = fallbackBtns.length;
+            }
+            console.log(`🔍 検出されたセクション数: ${sectionCount}個`);
 
-            for (let i = 0; i < totalSections; i++) {
+            for (let i = 0; i < sectionCount; i++) {
                 try {
                     await dismissAllModals(page);
 
-                    // ボタンを毎回再取得してインデックスで確実にクリック
-                    const currentBtns = await page.$$(addButtonsSelector);
-                    const targetBtn = currentBtns[i];
+                    // ループの都度セクションを再取得し、i番目のセクション内の「＋」ボタンを正確に探す
+                    const sections = await page.$$(sectionSelector);
+                    let targetBtn = null;
+
+                    if (sections[i]) {
+                        targetBtn = await sections[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                    }
+
+                    // セクション内で見つからない場合は全体からフォールバック取得
+                    if (!targetBtn) {
+                        const allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                        targetBtn = allBtns[i];
+                    }
 
                     if (!targetBtn) {
                         console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
@@ -239,7 +255,7 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    // 💡 投稿がサーバーに反映され、モーダルが閉じるまでしっかり待機
+                    // 💡 投稿が確実にボードに反映され、モーダルが完全に閉じるまで待機
                     await page.waitForTimeout(5000); 
                     console.log(`✅ [セクション ${i + 1}] 投稿が完了しました！`);
 
@@ -304,7 +320,7 @@ async function main() {
 
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
-                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 }).catch(() => null);
+                        editor = await page.waitForSelector('div[contenteditable="true'], textarea', { timeout: 2000 }).catch(() => null);
                     }
 
                     if (editor) {

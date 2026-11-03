@@ -166,7 +166,7 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(4000);
 
             await takeStepScreenshot(page, 'after-goto', accountNum);
 
@@ -178,137 +178,145 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 新規投稿作成（各セクションへの確実な投稿・公開処理）
+            // 1. 全セクションへの新規投稿作成
             // ==========================================
-            const TOPIC_ROUNDS = 1;
+            console.log(`\n📂 【全セクションへの新規投稿開始】`);
+            await dismissAllModals(page);
 
-            for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
-                console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
-                
-                await dismissAllModals(page);
-                const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                console.log(`🔍 検出されたセクション数（投稿ボタン）: ${addButtons.length}個`);
+            // セクションの「＋」ボタンを特定するための安定したセレクタ
+            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")';
+            let addButtonsCount = $eval => document.querySelectorAll($eval).length;
+            
+            // セクション数を取得
+            const initialCount = await page.$$eval(addButtonsSelector, btns => btns.length);
+            console.log(`🔍 検出されたセクション数: ${initialCount}個`);
 
-                for (let i = 0; i < addButtons.length; i++) {
-                    try {
-                        await dismissAllModals(page);
-                        
-                        const freshAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                        const targetAddBtn = freshAddBtns[i];
+            for (let i = 0; i < initialCount; i++) {
+                try {
+                    await dismissAllModals(page);
 
-                        if (!targetAddBtn) continue;
-
-                        await targetAddBtn.click({ force: true });
-                        await page.waitForTimeout(1000);
-
-                        // 件名入力
-                        const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
-                        if (titleInput) {
-                            await titleInput.click();
-                            await titleInput.fill(TOPIC_TITLE);
-                            await page.waitForTimeout(200);
-                        }
-
-                        // 本文入力
-                        const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"]');
-                        if (bodyEditor) {
-                            await bodyEditor.click();
-                            await page.keyboard.insertText(TOPIC_MESSAGE);
-                            await page.waitForTimeout(500);
-                        }
-
-                        // 画像添付
-                        await attachImageForTopic(page);
-
-                        // 「公開」または「Publish」ボタンを確実に探してクリック
-                        let published = false;
-                        const publishButtons = await page.$$('button:has-text("公開"), button:has-text("Publish")');
-                        for (const pBtn of publishButtons) {
-                            if (await pBtn.isVisible()) {
-                                await pBtn.click({ force: true });
-                                published = true;
-                                break;
-                            }
-                        }
-
-                        if (!published) {
-                            await page.keyboard.press('Control+Enter');
-                        }
-
-                        await page.waitForTimeout(3500); 
-                        console.log(`✅ [セクション ${i + 1}] 投稿を公開しました！`);
-
-                        if (i === 0) {
-                            await takeStepScreenshot(page, 'after-first-post', accountNum);
-                        }
-                    } catch (err) {
-                        console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
-                    } finally {
-                        await dismissAllModals(page);
+                    // ループの都度、ボタン要素を再取得してインデックス指定で確実に対象をクリック
+                    const currentButtons = await page.$$(addButtonsSelector);
+                    if (!currentButtons[i]) {
+                        console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
+                        continue;
                     }
+
+                    console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
+                    await currentButtons[i].click({ force: true });
+                    await page.waitForTimeout(1000);
+
+                    // 件名入力
+                    const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
+                    if (titleInput) {
+                        await titleInput.click();
+                        await titleInput.fill(TOPIC_TITLE);
+                        await page.waitForTimeout(200);
+                    }
+
+                    // 本文入力
+                    const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"]');
+                    if (bodyEditor) {
+                        await bodyEditor.click();
+                        await page.keyboard.insertText(TOPIC_MESSAGE);
+                        await page.waitForTimeout(500);
+                    }
+
+                    // 画像添付
+                    await attachImageForTopic(page);
+
+                    // 「公開」または「Publish」ボタンをクリック
+                    let published = false;
+                    const publishButtons = await page.$$('button:has-text("公開"), button:has-text("Publish")');
+                    for (const pBtn of publishButtons) {
+                        if (await pBtn.isVisible()) {
+                            await pBtn.click({ force: true });
+                            published = true;
+                            break;
+                        }
+                    }
+
+                    if (!published) {
+                        await page.keyboard.press('Control+Enter');
+                    }
+
+                    await page.waitForTimeout(3500); 
+                    console.log(`✅ [セクション ${i + 1}] 投稿の公開が完了しました！`);
+
+                    if (i === 0) {
+                        await takeStepScreenshot(page, 'after-first-post', accountNum);
+                    }
+                } catch (err) {
+                    console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
+                } finally {
+                    await dismissAllModals(page);
                 }
             }
 
             // ==========================================
-            // 2. コメント巡回（レートリミット対策強化版）
+            // 2. 全投稿へのコメント巡回
             // ==========================================
-            const COMMENT_ROUNDS = 1;
+            console.log(`\n⚡ 【全投稿へのコメント巡回開始】`);
+            let totalCommented = 0;
+            let safetyLimit = 0;
 
-            for (let round = 1; round <= COMMENT_ROUNDS; round++) {
-                console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);
-                let processedCount = 0;
+            // 画面上のすべてのコメント追加ボタンを順番に走査（上限50件まで）
+            while (safetyLimit < 50) {
+                await dismissAllModals(page);
 
-                while (processedCount < 10) { // 上限を10件に調整し安全性を確保
-                    await dismissAllModals(page);
-
-                    // レートリミットのエラーメッセージ検知
-                    const rateLimitAlert = await page.$('text=コメントの回数が多すぎます');
-                    if (rateLimitAlert && await rateLimitAlert.isVisible()) {
-                        console.log('⚠️ レートリミット（連投制限）を検知したため、コメント巡回を中断します。');
-                        break;
-                    }
-
-                    const commentSelectors = [
-                        'button:has-text("Add comment")',
-                        'button:has-text("コメントを追加")',
-                        'div:has-text("+ Add comment")',
-                        'span:has-text("+ Add comment")',
-                        'button[aria-label*="comment"]'
-                    ];
-
-                    const foundBtns = await page.$$(commentSelectors.join(', '));
-                    if (processedCount >= foundBtns.length) break;
-
-                    const targetBtn = foundBtns[processedCount];
-                    if (!targetBtn) break;
-
-                    try {
-                        await targetBtn.click({ force: true });
-                        await page.waitForTimeout(1000);
-
-                        let editor = await page.$('div[contenteditable="true"], textarea');
-                        if (!editor) {
-                            editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 }).catch(() => null);
-                        }
-
-                        if (editor) {
-                            await editor.click();
-                            await page.keyboard.insertText(COMMENT_MESSAGE);
-                            await page.waitForTimeout(500);
-
-                            await page.keyboard.press('Enter');
-                            await page.waitForTimeout(5000); // 💡 連投制限を防ぐためしっかり待機
-                        }
-
-                        processedCount++;
-                        console.log(`✅ コメント投稿完了 (${processedCount}件目)`);
-                    } catch (err) {
-                        processedCount++;
-                        console.log(`⚠️ コメント処理スキップ/エラー (${processedCount}件目):`, err.message);
-                    } finally {
-                        await dismissAllModals(page);
-                    }
+                // レートリミットのエラーメッセージ検知
+                const rateLimitAlert = await page.$('text=コメントの回数が多すぎます');
+                if (rateLimitAlert && await rateLimitAlert.isVisible()) {
+                    console.log('⚠️ レートリミット（連投制限）を検知したため、コメント巡回を中断します。');
+                    break;
                 }
+
+                const commentSelectors = [
+                    'button:has-text("Add comment")',
+                    'button:has-text("コメントを追加")',
+                    'div:has-text("+ Add comment")',
+                    'span:has-text("+ Add comment")',
+                    'button[aria-label*="comment"]'
+                ];
+
+                const foundBtns = await page.$$(commentSelectors.join(', '));
+                if (totalCommented >= foundBtns.length) {
+                    console.log('✨ すべてのコメント対象を巡回し終えました。');
+                    break;
+                }
+
+                const targetBtn = foundBtns[totalCommented];
+                if (!targetBtn) break;
+
+                try {
+                    // スクロールしてボタンを表示させる
+                    await targetBtn.scrollIntoViewIfNeeded();
+                    await targetBtn.click({ force: true });
+                    await page.waitForTimeout(1000);
+
+                    let editor = await page.$('div[contenteditable="true"], textarea');
+                    if (!editor) {
+                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 }).catch(() => null);
+                    }
+
+                    if (editor) {
+                        await editor.click();
+                        await page.keyboard.insertText(COMMENT_MESSAGE);
+                        await page.waitForTimeout(500);
+
+                        await page.keyboard.press('Enter');
+                        await page.waitForTimeout(4000); // 💡 連投制限を防ぐための待機時間
+                    }
+
+                    totalCommented++;
+                    console.log(`✅ コメント投稿完了 (${totalCommented}件目)`);
+                } catch (err) {
+                    totalCommented++;
+                    console.log(`⚠️ コメント処理スキップ/エラー (${totalCommented}件目):`, err.message);
+                } finally {
+                    await dismissAllModals(page);
+                }
+                safetyLimit++;
             }
 
             console.log('\n🎉 全ての処理が完了しました！');

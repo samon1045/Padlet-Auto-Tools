@@ -49,19 +49,21 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 サイドパネルやモーダル、邪魔なオーバーレイを強制的に消去する最強のヘルパー
+// 🧹 モーダルやサイドパネルを確実に閉じるヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 5; i++) {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
     }
     try {
-        // DOM上からサイドパネル（surfaceActivityPanel）やオーバーレイを強制削除する
+        // 画面上部の何もない余白をクリックしてフォーカスをリセット
+        await page.mouse.click(200, 30);
+        await page.waitForTimeout(200);
+
+        // DOM上からオーバーレイやモーダルを強制削除
         await page.evaluate(() => {
-            const elementsToRemove = document.querySelectorAll(
-                '[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"], .fixed.inset-0'
-            );
-            elementsToRemove.forEach(el => el.remove());
+            const panels = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"], .fixed.inset-0');
+            panels.forEach(el => el.remove());
         });
     } catch (e) {}
     await page.waitForTimeout(1000);
@@ -75,7 +77,7 @@ async function attachImageForTopic(page) {
     }
 
     try {
-        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル"), button[aria-label*="アップロード"], button[data-testid*="attachment"]');
+        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
             await page.waitForTimeout(1000);
@@ -296,7 +298,7 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了直後に自動で開くサイドパネルを強制消去する
+                        // 💡 投稿完了直後に確実にモーダルを閉じる処理（余白クリック＋Escape）
                         await page.waitForTimeout(4000);
                         await dismissAllModals(page);
                         await page.waitForTimeout(2000);

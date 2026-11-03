@@ -109,7 +109,6 @@ async function main() {
     // 🔑 改行区切りでアカウントごとのクッキー文字列ブロックを取得
     const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
     
-    // まとまったテキストから、[ で始まって ] で終わるブロックを安全に切り出す
     const authList = [];
     let currentBlock = '';
     let bracketCount = 0;
@@ -141,11 +140,22 @@ async function main() {
         console.log(`\n🔑 アカウント #${accountNum} のクッキーデータでログインを試行します...`);
         
         try {
-            // クッキーの配列部分をそのままPlaywrightのstorageState形式のファイルに書き出す
-            const formattedState = `{\n  "cookies": ${authData},\n  "origins": []\n}`;
-            fs.writeFileSync(authFile, formattedState);
+            // クッキーの sameSite が null の場合に Playwright が弾くのを防ぐための補正処理
+            const parsedCookies = JSON.parse(authData);
+            const cleanedCookies = parsedCookies.map(cookie => {
+                if (cookie.sameSite === null || (cookie.sameSite !== 'Strict' && cookie.sameSite !== 'Lax' && cookie.sameSite !== 'None')) {
+                    cookie.sameSite = 'Lax';
+                }
+                return cookie;
+            });
+
+            const formattedState = {
+                cookies: cleanedCookies,
+                origins: []
+            };
+            fs.writeFileSync(authFile, JSON.stringify(formattedState, null, 2));
         } catch (e) {
-            console.error(`❌ アカウント #${accountNum} のクッキーファイル書き込みに失敗しました:`, e.message);
+            console.error(`❌ アカウント #${accountNum} のクッキー処理に失敗しました:`, e.message);
             continue;
         }
 

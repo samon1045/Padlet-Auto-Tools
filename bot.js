@@ -47,15 +47,16 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルや邪魔なパネルを閉じるヘルパー
+// 🧹 モーダルや邪魔なパネル、エラーアラートを閉じる・削除するヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(150);
+        await page.waitForTimeout(100);
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
+            // 「もう一度お試しください」などのエラーアラートやオーバーレイを強制削除
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください")');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -183,11 +184,7 @@ async function main() {
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // セクションの「＋」ボタンを特定するための安定したセレクタ
             const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")';
-            let addButtonsCount = $eval => document.querySelectorAll($eval).length;
-            
-            // セクション数を取得
             const initialCount = await page.$$eval(addButtonsSelector, btns => btns.length);
             console.log(`🔍 検出されたセクション数: ${initialCount}個`);
 
@@ -195,7 +192,6 @@ async function main() {
                 try {
                     await dismissAllModals(page);
 
-                    // ループの都度、ボタン要素を再取得してインデックス指定で確実に対象をクリック
                     const currentButtons = await page.$$(addButtonsSelector);
                     if (!currentButtons[i]) {
                         console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
@@ -203,7 +199,12 @@ async function main() {
                     }
 
                     console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
-                    await currentButtons[i].click({ force: true });
+                    
+                    // クリック前に要素がブロックされていないか確認しつつクリック
+                    await currentButtons[i].click({ force: true, timeout: 5000 }).catch(async () => {
+                        await dismissAllModals(page);
+                        await currentButtons[i].click({ force: true });
+                    });
                     await page.waitForTimeout(1000);
 
                     // 件名入力
@@ -240,7 +241,8 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    await page.waitForTimeout(3500); 
+                    // 💡 サーバー負荷軽減とエラー防止のため、投稿間のウェイトを4秒に延長
+                    await page.waitForTimeout(4000); 
                     console.log(`✅ [セクション ${i + 1}] 投稿の公開が完了しました！`);
 
                     if (i === 0) {
@@ -248,6 +250,7 @@ async function main() {
                     }
                 } catch (err) {
                     console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
+                    await dismissAllModals(page); // エラー発生時もオーバーレイを消す
                 } finally {
                     await dismissAllModals(page);
                 }
@@ -260,8 +263,7 @@ async function main() {
             let totalCommented = 0;
             let safetyLimit = 0;
 
-            // 画面上のすべてのコメント追加ボタンを順番に走査（上限50件まで）
-            while (safetyLimit < 50) {
+            while (safetyLimit < 60) {
                 await dismissAllModals(page);
 
                 // レートリミットのエラーメッセージ検知
@@ -289,7 +291,6 @@ async function main() {
                 if (!targetBtn) break;
 
                 try {
-                    // スクロールしてボタンを表示させる
                     await targetBtn.scrollIntoViewIfNeeded();
                     await targetBtn.click({ force: true });
                     await page.waitForTimeout(1000);
@@ -305,7 +306,7 @@ async function main() {
                         await page.waitForTimeout(500);
 
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(4000); // 💡 連投制限を防ぐための待機時間
+                        await page.waitForTimeout(5000); // 💡 連投制限を防ぐための待機時間
                     }
 
                     totalCommented++;

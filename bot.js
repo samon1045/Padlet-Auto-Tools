@@ -49,15 +49,15 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやサイドパネルを確実に閉じる最強のヘルパー
-async function dismissAllModals(page) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+// 🧹 開いているモーダルやポップアップを確実に完全に閉じるヘルパー
+async function closeAllModalsAndPopups(page) {
+    for (let i = 0; i < 3; i++) {
         try {
-            // パネル内にある「閉じる」ボタン（×ボタンなど）があれば直接クリックする
-            const closeBtn = await page.$('[data-testid*="surfaceActivityPanel"] button[aria-label*="閉じる"], [data-testid*="surfaceActivityPanel"] button[aria-label*="Close"], [aria-label*="閉じる"], [aria-label*="Close"], button.close-btn');
+            // モーダル内の「×」ボタン（閉じるボタン）があれば直接クリック
+            const closeBtn = await page.$('button[aria-label*="閉じる"], button[aria-label*="Close"], button.close-btn, div[role="dialog"] button:has-text("×")');
             if (closeBtn && await closeBtn.isVisible()) {
                 await closeBtn.click({ force: true });
-                await page.waitForTimeout(500);
+                await page.waitForTimeout(400);
             }
         } catch (e) {}
 
@@ -66,17 +66,13 @@ async function dismissAllModals(page) {
     }
 
     try {
-        // 画面外の余白をクリックしてフォーカスを外す
-        await page.mouse.click(200, 30);
-        await page.waitForTimeout(200);
-
-        // DOMからオーバーレイを完全削除
+        // DOMからダイアログやオーバーレイ要素を強制的に削除
         await page.evaluate(() => {
-            const panels = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"], .fixed.inset-0');
-            panels.forEach(el => el.remove());
+            const modals = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], [data-testid*="modal"], div[role="dialog"], .oz-overlay');
+            modals.forEach(el => el.remove());
         });
     } catch (e) {}
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(600);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -197,9 +193,9 @@ async function main() {
                 console.log(`========================================`);
 
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
-                await dismissAllModals(page);
+                await closeAllModalsAndPopups(page);
 
-                // 💡 セクション列の「＋」ボタンを特定（右下の全体投稿ボタンや不要な要素を厳格に除外）
+                // 💡 各セクションの上部にある「＋」ボタンのみを正確に取得する
                 let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 
                 const uniqueColumnsBtns = [];
@@ -208,7 +204,8 @@ async function main() {
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        if (box && box.y > 50 && box.y < 400 && box.x < 1100) {
+                        // 💡 条件: Y座標が上部（50〜350px）、かつ右端の固定ボタン（X > 1100）や右下ボタンを完全に除外
+                        if (box && box.y > 50 && box.y < 350 && box.x < 1100) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
                                 seenX.add(roundedX);
@@ -225,9 +222,10 @@ async function main() {
 
                 for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
-                        // 💡 各セクションの処理に入る前に必ず画面を完全クリーンにする（残留パネル対策）
-                        await dismissAllModals(page);
+                        // 💡 各セクションの処理開始前に必ず既存のモーダルを綺麗に掃除する
+                        await closeAllModalsAndPopups(page);
 
+                        // 最新のボタン位置を再スキャンして取得
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         const currentList = [];
                         const currentSeenX = new Set();
@@ -235,7 +233,7 @@ async function main() {
                         for (const b of refreshBtns) {
                             try {
                                 const box = await b.boundingBox();
-                                if (box && box.y > 50 && box.y < 400 && box.x < 1100) {
+                                if (box && box.y > 50 && box.y < 350 && box.x < 1100) {
                                     const roundedX = Math.round(box.x / 50) * 50;
                                     if (!currentSeenX.has(roundedX)) {
                                         currentSeenX.add(roundedX);
@@ -255,7 +253,7 @@ async function main() {
                         console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
                         await targetObj.btn.scrollIntoViewIfNeeded();
                         
-                        // 座標指定の絶対クリックで確実に対象を叩く
+                        // 座標指定による絶対クリックで確実に対象セクションの「＋」を叩く
                         const box = await targetObj.btn.boundingBox();
                         if (box) {
                             await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -308,9 +306,9 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了直後に自動で開くサイドパネルを強制消去する
+                        // 💡 投稿完了後の完了待機と、確実にモーダルを消し去る処理
                         await page.waitForTimeout(4000);
-                        await dismissAllModals(page);
+                        await closeAllModalsAndPopups(page);
                         await page.waitForTimeout(2000);
 
                         console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
@@ -318,9 +316,9 @@ async function main() {
 
                     } catch (err) {
                         console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
-                        await dismissAllModals(page);
+                        await closeAllModalsAndPopups(page);
                     } finally {
-                        await dismissAllModals(page);
+                        await closeAllModalsAndPopups(page);
                     }
                 }
 
@@ -331,7 +329,7 @@ async function main() {
                 let safetyLimit = 0;
 
                 while (safetyLimit < 300) {
-                    await dismissAllModals(page);
+                    await closeAllModalsAndPopups(page);
 
                     const rateLimitAlert = await page.$('text=コメントの回数が多すぎます');
                     if (rateLimitAlert && await rateLimitAlert.isVisible()) {
@@ -379,9 +377,9 @@ async function main() {
                         console.log(`✅ コメント投稿完了 (${safetyLimit + 1}件目)`);
                     } catch (err) {
                         console.log(`⚠️ コメント処理スキップ/エラー:`, err.message);
-                        await dismissAllModals(page);
+                        await closeAllModalsAndPopups(page);
                     } finally {
-                        await dismissAllModals(page);
+                        await closeAllModalsAndPopups(page);
                     }
                     safetyLimit++;
                 }

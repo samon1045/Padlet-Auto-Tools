@@ -2,12 +2,11 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値（画像ファイル名はスペースや括弧を含まない名前にリネームしておくと安全です）
+// 📝 設定値
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-
-const IMAGE_PATH = path.join(__dirname, 'animation.gif'); // ※リポジトリ側のファイル名もこれに合わせて変更してください
+const IMAGE_PATH = path.join(__dirname, 'animation.gif'); // ※必要に応じてファイル名を合わせてください
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -39,10 +38,11 @@ async function sendDiscordNotification(boardUrl, accountIndex) {
     }
 }
 
-// 📸 スクリーンショット保存用
+// 📸 スクリーンショット保存用（ファイル名が重複して上書きされないよう、一意のIDやタイムスタンプを付与）
 async function takeStepScreenshot(page, stepName, accountIndex) {
     try {
-        const fileName = `screenshot-acc${accountIndex}-${stepName.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+        const timestamp = Date.now();
+        const fileName = `screenshot-acc${accountIndex}-${timestamp}-${stepName.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
         await page.screenshot({ path: fileName, fullPage: true });
         console.log(`📸 スクリーンショット保存: ${fileName}`);
     } catch (e) {}
@@ -277,9 +277,9 @@ async function main() {
                     await page.waitForTimeout(8000); 
                     console.log(`✅ [${targetName}] 投稿が完了しました！`);
 
-                    if (i === 0) {
-                        await takeStepScreenshot(page, 'after-first-post', accountNum);
-                    }
+                    // 💡 セクションごとにユニークな名前でスクリーンショットを保存
+                    await takeStepScreenshot(page, `post-${targetName}`, accountNum);
+
                 } catch (err) {
                     console.log(`⚠️ 投稿処理中エラー (${targetName}):`, err.message);
                     await dismissAllModals(page);
@@ -328,7 +328,7 @@ async function main() {
 
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
-                        editor = await page.waitForSelector('div[contenteditable="true'], textarea', { timeout: 3000 }).catch(() => null);
+                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
                     }
 
                     if (editor) {

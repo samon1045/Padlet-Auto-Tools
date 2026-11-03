@@ -38,6 +38,17 @@ async function sendDiscordNotification(boardUrl, accountIndex) {
     }
 }
 
+// 📸 行動ごとにスクリーンショットを撮る便利関数
+async function takeStepScreenshot(page, stepName, accountIndex) {
+    try {
+        const fileName = `screenshot-acc${accountIndex}-${stepName.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+        await page.screenshot({ path: fileName, fullPage: true });
+        console.log(`📸 スクリーンショット保存: ${fileName}`);
+    } catch (e) {
+        // スクショ失敗でメイン処理を止めない
+    }
+}
+
 // ポップアップを閉じるヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 2; i++) {
@@ -58,7 +69,7 @@ async function dismissAllModals(page) {
 }
 
 // 🖼️ 画像アップロード
-async function attachImage(page) {
+async function attachImage(page, accountIndex) {
     if (!fs.existsSync(IMAGE_PATH)) return;
 
     try {
@@ -77,6 +88,7 @@ async function attachImage(page) {
             if (fileChooser) {
                 await fileChooser.setFiles(IMAGE_PATH);
                 await page.waitForTimeout(1000);
+                await takeStepScreenshot(page, 'image-uploaded', accountIndex);
                 return;
             }
         }
@@ -85,6 +97,7 @@ async function attachImage(page) {
         if (fileInputs.length > 0) {
             await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
             await page.waitForTimeout(1000);
+            await takeStepScreenshot(page, 'image-uploaded-input', accountIndex);
         }
     } catch (err) {}
 }
@@ -112,9 +125,16 @@ async function main() {
     for (let index = 0; index < authList.length; index++) {
         const authData = authList[index];
         const authFile = `auth-${index}.json`;
+        const accountNum = index + 1;
 
-        console.log(`\n🔑 アカウント #${index + 1} のクッキーデータでログインを試行します...`);
-        fs.writeFileSync(authFile, authData);
+        console.log(`\n🔑 アカウント #${accountNum} のクッキーデータでログインを試行します...`);
+        
+        // PlaywrightのstorageState形式（配列をラップしたオブジェクト）に整形して保存
+        const formattedState = {
+            cookies: JSON.parse(authData),
+            origins: []
+        };
+        fs.writeFileSync(authFile, JSON.stringify(formattedState, null, 2));
 
         const browser = await chromium.launch({ 
             headless: true,
@@ -127,11 +147,14 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(3000);
+
+            // アクセス直後の状態を撮影
+            await takeStepScreenshot(page, 'after-goto', accountNum);
 
             // 未ログイン画面に飛ばされていないかチェック
             if (page.url().includes('login') || page.url().includes('verify') || await page.$('text=registered users only')) {
-                throw new Error('クッキーの有効期限が切れています。');
+                throw new Error('クッキーの有効期限が切れているか、ログインしていません。');
             }
 
             console.log('ボードの読み込み完了！処理を開始します...');
@@ -169,7 +192,7 @@ async function main() {
                             await page.waitForTimeout(200);
                         }
 
-                        await attachImage(page);
+                        await attachImage(page, accountNum);
 
                         const publishBtn = await page.$('button:has-text("Publish"), button:has-text("投稿"), button:has-text("公開"), button[type="submit"]');
                         if (publishBtn && await publishBtn.isVisible()) {
@@ -185,6 +208,11 @@ async function main() {
                             await nameInput.fill('さーもん万歳！！');
                             await doneBtn.click({ force: true });
                             await page.waitForTimeout(500);
+                        }
+
+                        // 投稿ごとのアクション後にスクショ撮影
+                        if (tRound === 1 && i === 0) {
+                            await takeStepScreenshot(page, 'after-first-post', accountNum);
                         }
                     } catch (err) {} finally {
                         await dismissAllModals(page);
@@ -237,7 +265,7 @@ async function main() {
                             await page.keyboard.insertText(COMMENT_MESSAGE);
                             await page.waitForTimeout(100);
 
-                            await attachImage(page);
+                            await attachImage(page, accountNum);
 
                             await page.keyboard.press('Enter');
                             await page.waitForTimeout(1200);
@@ -252,6 +280,9 @@ async function main() {
                         }
 
                         processedCount++;
+                        if (round === 1 && processedCount === 1) {
+                            await takeStepScreenshot(page, 'after-first-comment', accountNum);
+                        }
                     } catch (err) {
                         processedCount++;
                     } finally {
@@ -261,17 +292,17 @@ async function main() {
             }
 
             console.log('\n🎉 全ての処理が完了しました！');
-            await page.screenshot({ path: `screenshot-success-${index + 1}.png`, fullPage: true });
+            await takeStepScreenshot(page, 'success-final', accountNum);
 
             success = true;
             await browser.close();
 
-            await sendDiscordNotification(TARGET_BOARD_URL, index + 1);
+            await sendDiscordNotification(TARGET_BOARD_URL, accountNum);
             break;
 
         } catch (error) {
-            console.error(`❌ アカウント #${index + 1} でエラーが発生しました:`, error.message);
-            await page.screenshot({ path: `screenshot-error-${index + 1}.png`, fullPage: true }).catch(() => {});
+            console.error(`❌ アカウント #${accountNum} でエラーが発生しました:`, error.message);
+            await takeStepScreenshot(page, 'error-occurred', accountNum);
             await browser.close();
             console.log('🔄 次のアカウントに切り替えてリトライします...');
         }

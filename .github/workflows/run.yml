@@ -4,13 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       target_url:
-        description: '投稿先のPadletの部屋のURL'
+        description: 'アクセス先のURL'
         required: true
+        type: string
+      auth_type:
+        description: '使用するログイン情報 (padlet または sub)'
+        required: false
+        default: 'padlet'
         type: string
       message:
         description: '送信するメッセージ'
         required: false
-        default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
+        default: ''
         type: string
 
 jobs:
@@ -35,14 +40,16 @@ jobs:
         run: node bot.js
         env:
           AUTH_JSON: ${{ secrets.AUTH_JSON }}
+          AUTH_JSON_SUB: ${{ secrets.AUTH_JSON_SUB }}
+          AUTH_CHOICE: ${{ inputs.auth_type }}
           TARGET_URL: ${{ inputs.target_url }}
           TOPIC_MESSAGE: ${{ inputs.message }}
-          COMMENT_MESSAGE: ${{ inputs.message }} 
+          COMMENT_MESSAGE: ${{ inputs.message }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: スクリーンショットの保存（Artifacts）
         uses: actions/upload-artifact@v4
-        if: always() # エラーが起きても成功しても必ず保存する
+        if: always()
         with:
           name: debug-screenshots
           path: screenshot-*.png

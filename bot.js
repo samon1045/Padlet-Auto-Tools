@@ -232,33 +232,22 @@ async function main() {
                     // 画像添付
                     await attachImageForTopic(page);
 
-                    // 💡 「公開」ボタンが有効になるのを待って確実にクリックする処理
-                    await page.waitForTimeout(1000);
+                    // 💡 「公開」ボタンクリックまたはCtrl+Enter送信
                     let published = false;
-                    
-                    // 「公開」または「Publish」ボタンを繰り返し探してクリックを試みる
-                    for (let attempt = 0; attempt < 5; attempt++) {
-                        const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
-                        if (publishBtn) {
-                            const isDisabled = await publishBtn.evaluate(el => el.disabled || el.getAttribute('aria-disabled') === 'true');
-                            if (!isDisabled) {
-                                await publishBtn.click({ force: true });
-                                published = true;
-                                console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました。`);
-                                break;
-                            }
-                        }
-                        await page.waitForTimeout(500);
+                    const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
+                    if (publishBtn) {
+                        try {
+                            await publishBtn.click({ force: true, timeout: 2000 });
+                            published = true;
+                        } catch (e) {}
                     }
 
-                    // 万が一ボタンが押せなかった場合はキーボードショートカット（Control/Meta + Enter）で送信
                     if (!published) {
                         await page.keyboard.press('Control+Enter');
-                        console.log(`⚠️ [セクション ${i + 1}] ショートカット（Ctrl+Enter）で送信を試みました。`);
+                        console.log(`⚠️ [セクション ${i + 1}] ショートカット（Ctrl+Enter）で送信しました。`);
                     }
 
-                    // 💡 投稿が確実に反映されるまで待機
-                    await page.waitForTimeout(5000); 
+                    await page.waitForTimeout(4000); 
 
                     if (i === 0) {
                         await takeStepScreenshot(page, 'after-first-post', accountNum);
@@ -278,7 +267,7 @@ async function main() {
             let commentedIds = new Set();
             let safetyLimit = 0;
 
-            while (safetyLimit < 100) {
+            while (safetyLimit < 200) {
                 await dismissAllModals(page);
 
                 // レートリミット検知

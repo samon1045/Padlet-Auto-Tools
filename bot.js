@@ -7,7 +7,7 @@ const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || '�
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 
-const IMAGE_PATH = path.join(__dirname, '_______.gif'); 
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif'); 
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -179,44 +179,49 @@ async function main() {
 
             console.log('ボードの読み込み完了！処理を開始します...');
 
-            // 💡 全体の処理を「2回繰り返す」ためのループを追加
+            // 2回繰り返すループ
             for (let round = 1; round <= 2; round++) {
                 console.log(`\n========================================`);
                 console.log(`🔄 【 処理ラウンド ${round} / 2 回目 】`);
                 console.log(`========================================`);
 
                 // ==========================================
-                // 1. 各セクション（カラム）を左からインデックス順に確実に対象にして投稿
+                // 1. 確実に各セクションの「＋」ボタンのリストを直接取得して順次投稿
                 // ==========================================
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                const sectionContainers = await page.$$('div[data-section-id], .section-container, section');
-                console.log(`🔍 検出されたセクション列数: ${sectionContainers.length}個`);
+                // 💡 各セクションのヘッダーやカラム内にある「＋」ボタンだけに厳密に絞り込む
+                // （誤検知を防ぐため、セクションコンテナの直下にある「＋」ボタンや「投稿を追加」ボタンを直接狙う）
+                let sectionAddBtns = await page.$$('div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), section button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
+                
+                // もしセレクタで絞り込みすぎて0個の場合はフォールバックとして画面上の「＋」ボタンを取得
+                if (sectionAddBtns.length === 0 || sectionAddBtns.length > 20) {
+                    sectionAddBtns = await page.$$('button:has-text("+")');
+                }
 
-                const targetCount = Math.min(sectionContainers.length, 10); 
+                console.log(`🔍 検出された有効なセクション投稿ボタン数: ${sectionAddBtns.length}個`);
 
-                for (let i = 0; i < targetCount; i++) {
+                for (let i = 0; i < sectionAddBtns.length; i++) {
                     try {
                         await dismissAllModals(page);
-                        console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
 
-                        const freshContainers = await page.$$('div[data-section-id], .section-container, section');
-                        const targetContainer = freshContainers[i];
-
-                        if (!targetContainer) {
-                            console.log(`⚠️ セクション ${i + 1} のコンテナが見つからないためスキップします。`);
-                            continue;
+                        // 毎ループごとにボタンを最新状態で再取得
+                        let freshBtns = await page.$$('div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), section button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
+                        if (freshBtns.length === 0 || freshBtns.length > 20) {
+                            freshBtns = await page.$$('button:has-text("+")');
                         }
 
-                        const targetBtn = await targetContainer.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                        const targetBtn = freshBtns[i];
 
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
                         }
 
+                        console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
                         await targetBtn.scrollIntoViewIfNeeded();
+                        
                         await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
                             await dismissAllModals(page);
                             await targetBtn.click({ force: true });
@@ -339,7 +344,7 @@ async function main() {
                 }
 
                 console.log(`\n🎉 ラウンド ${round} の処理が完了しました！`);
-                // ラウンドごとにページを再読み込みして状態をリフレッシュ
+                
                 if (round < 2) {
                     console.log('🔄 次のラウンドへ向けてボードを再読み込みします...');
                     await page.reload({ waitUntil: 'domcontentloaded' });

@@ -49,13 +49,20 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやエラーオーバーレイを完全に消去するヘルパー
+// 🧹 モーダルやサイドパネル、詳細ポップアップを完全に消去するヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(300);
     }
     try {
+        // サイドパネルやアクティビティパネルの「×」ボタンがあればクリックして閉じる
+        const closePanelBtn = await page.$('[data-testid*="surfaceActivityPanel"] button[aria-label*="閉じる"], [data-testid*="surfaceActivityPanel"] button[aria-label*="Close"], [aria-label*="パネルを閉じる"]');
+        if (closePanelBtn) {
+            await closePanelBtn.click({ force: true }).catch(() => {});
+            await page.waitForTimeout(500);
+        }
+
         await page.evaluate(() => {
             const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], div.z-alert');
             overlays.forEach(el => {
@@ -65,7 +72,7 @@ async function dismissAllModals(page) {
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(800);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -188,24 +195,18 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 セクションの「列（カラム）」自体を位置情報（X座標順）で確実に特定して取得する
-                // Padletのカラム要素を特定するセレクタ（data属性や一般的なセクションコンテナ）
-                let columns = await page.$$('[data-section-id], .section, [class*="section"], [class*="column"]');
-                
-                // もし汎用セレクタで取れすぎる場合は、画面上部のセクションヘッダーの下にある「＋」ボタンのX座標を元にグループ化する
-                // ここでは、各カラムの独立した「＋」ボタンをDOM上の出現順かつユニークにスキャンする
+                // 💡 セクション列の「＋」ボタンを位置ベースで厳格に取得（最大6個までに制限）
                 let allBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                 
-                // 画面下部の固定ボタン（全体投稿用など）を除外し、X座標で左から右へ並び替える
                 const uniqueColumnsBtns = [];
                 const seenX = new Set();
 
                 for (const btn of allBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        if (box && box.y < 700) {
-                            // X座標を丸めて、同じカラム内の重複を避ける（およそ50ピクセル以内の近接を除外）
-                            const roundedX = Math.round(box.x / 50) * 50;
+                        // 画面上部〜中層にあり、かつボードのセクション領域（通常Yが100〜500の間）にあるものに限定
+                        if (box && box.y > 50 && box.y < 600) {
+                            const roundedX = Math.round(box.x / 60) * 60;
                             if (!seenX.has(roundedX)) {
                                 seenX.add(roundedX);
                                 uniqueColumnsBtns.push({ btn, x: box.x });
@@ -214,16 +215,17 @@ async function main() {
                     } catch (e) {}
                 }
 
-                // X座標（左から右）の順にソート
+                // X座標（左から右）の順にソートし、最大6個に限定
                 uniqueColumnsBtns.sort((a, b) => a.x - b.x);
+                const targetColumnsBtns = uniqueColumnsBtns.slice(0, 6);
 
-                console.log(`🔍 検出された独立したセクション列数（位置ベース）: ${uniqueColumnsBtns.length}個`);
+                console.log(`🔍 検出された有効なセクション列数（最大6個に制限）: ${targetColumnsBtns.length}個`);
 
-                for (let i = 0; i < uniqueColumnsBtns.length; i++) {
+                for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループごとにボタン群を再スキャンして座標順にソートし直す
+                        // 毎ループごとにボタン群を再スキャン
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                         const currentList = [];
                         const currentSeenX = new Set();
@@ -231,8 +233,8 @@ async function main() {
                         for (const b of refreshBtns) {
                             try {
                                 const box = await b.boundingBox();
-                                if (box && box.y < 700) {
-                                    const roundedX = Math.round(box.x / 50) * 50;
+                                if (box && box.y > 50 && box.y < 600) {
+                                    const roundedX = Math.round(box.x / 60) * 60;
                                     if (!currentSeenX.has(roundedX)) {
                                         currentSeenX.add(roundedX);
                                         currentList.push({ btn: b, x: box.x });
@@ -241,8 +243,8 @@ async function main() {
                             } catch (e) {}
                         }
                         currentList.sort((a, b) => a.x - b.x);
-
                         const targetObj = currentList[i];
+
                         if (!targetObj || !targetObj.btn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
@@ -296,10 +298,12 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // モーダルが完全に消えるまでしっかり待機
-                        await page.waitForTimeout(8000);
-                        console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
+                        // モーダルが完全に消え、詳細パネルが開いていたら閉じる処理を挟んで待機
+                        await page.waitForTimeout(4000);
+                        await dismissAllModals(page);
+                        await page.waitForTimeout(4000);
 
+                        console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
                         await takeStepScreenshot(page, `round${round}-section-${i + 1}`, accountNum);
 
                     } catch (err) {

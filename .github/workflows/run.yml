@@ -7,15 +7,10 @@ on:
         description: 'アクセス先のURL'
         required: true
         type: string
-      auth_type:
-        description: '使用するログイン情報 (padlet または sub)'
-        required: false
-        default: 'padlet'
-        type: string
       message:
         description: '送信するメッセージ'
         required: false
-        default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPadoパスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
+        default: ''
         type: string
 
 jobs:
@@ -39,7 +34,7 @@ jobs:
       - name: ボットの実行
         run: node bot.js
         env:
-          AUTH_JSONS: ${{ secrets.AUTH_JSONS }}  # ← ここを AUTH_JSONS にする！
+          AUTH_JSONS: ${{ secrets.AUTH_JSONS }}
           TARGET_URL: ${{ inputs.target_url }}
           TOPIC_MESSAGE: ${{ inputs.message }}
           COMMENT_MESSAGE: ${{ inputs.message }}

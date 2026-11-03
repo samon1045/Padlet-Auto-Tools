@@ -2,11 +2,12 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値
+// 📝 設定値（画像ファイル名はスペースや括弧を含まない名前にリネームしておくと安全です）
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
+
+const IMAGE_PATH = path.join(__dirname, 'animation.gif'); // ※リポジトリ側のファイル名もこれに合わせて変更してください
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -183,7 +184,6 @@ async function main() {
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // 初回にセクションの「名前」のリストだけを先に正確に取得しておく
             const initialContainers = await page.$$('div[data-section-id], .section-container, section');
             const sectionNames = [];
 
@@ -193,7 +193,6 @@ async function main() {
                     let sName = titleEl ? await titleEl.textContent() : `セクション ${i + 1}`;
                     sName = sName.trim();
                     
-                    // 内部に投稿ボタンがあるものだけを有効なセクション名として記録
                     const hasBtn = await initialContainers[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
                     if (hasBtn && sName) {
                         sectionNames.push(sName);
@@ -203,14 +202,12 @@ async function main() {
 
             console.log(`✨ 投稿対象セクション名一覧:`, sectionNames);
 
-            // 取得したセクション名を1つずつ順番にループして、毎回DOMを再スキャンして安全に処理
             for (let i = 0; i < sectionNames.length; i++) {
                 const targetName = sectionNames[i];
                 try {
                     await dismissAllModals(page);
                     console.log(`\n➡️ セクション「${targetName}」に投稿を作成中...`);
 
-                    // 💡 毎回最新のDOMから「現在のセクション要素とボタン」を再検索する（古い要素参照によるズレを防ぐため）
                     const currentContainers = await page.$$('div[data-section-id], .section-container, section');
                     let targetBtn = null;
 
@@ -277,7 +274,6 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    // 💡 投稿が確実にボードに反映され、画面が落ち着くまで長めに待機
                     await page.waitForTimeout(8000); 
                     console.log(`✅ [${targetName}] 投稿が完了しました！`);
 
@@ -301,7 +297,6 @@ async function main() {
             while (safetyLimit < 300) {
                 await dismissAllModals(page);
 
-                // レートリミット検知
                 const rateLimitAlert = await page.$('text=コメントの回数が多すぎます');
                 if (rateLimitAlert && await rateLimitAlert.isVisible()) {
                     console.log('⚠️ レートリミット（連投制限）を検知したため、コメント巡回を中断します。');
@@ -333,7 +328,7 @@ async function main() {
 
                     let editor = await page.$('div[contenteditable="true"], textarea');
                     if (!editor) {
-                        editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 3000 }).catch(() => null);
+                        editor = await page.waitForSelector('div[contenteditable="true'], textarea', { timeout: 3000 }).catch(() => null);
                     }
 
                     if (editor) {
@@ -361,7 +356,6 @@ async function main() {
             success = true;
             await browser.close();
 
-            // 🔔 Discord通知を実行
             await sendDiscordNotification(TARGET_BOARD_URL, accountNum);
             break;
 

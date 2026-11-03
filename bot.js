@@ -49,24 +49,34 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやサイドパネルを確実に閉じるヘルパー
+// 🧹 モーダルやサイドパネルを確実に閉じる最強のヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 5; i++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            // パネル内にある「閉じる」ボタン（×ボタンなど）があれば直接クリックする
+            const closeBtn = await page.$('[data-testid*="surfaceActivityPanel"] button[aria-label*="閉じる"], [data-testid*="surfaceActivityPanel"] button[aria-label*="Close"], [aria-label*="閉じる"], [aria-label*="Close"], button.close-btn');
+            if (closeBtn && await closeBtn.isVisible()) {
+                await closeBtn.click({ force: true });
+                await page.waitForTimeout(500);
+            }
+        } catch (e) {}
+
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(300);
     }
+
     try {
-        // 画面上部の何もない余白をクリックしてフォーカスをリセット
+        // 画面外の余白をクリックしてフォーカスを外す
         await page.mouse.click(200, 30);
         await page.waitForTimeout(200);
 
-        // DOM上からオーバーレイやモーダルを強制削除
+        // DOMからオーバーレイを完全削除
         await page.evaluate(() => {
             const panels = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"], .fixed.inset-0');
             panels.forEach(el => el.remove());
         });
     } catch (e) {}
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -215,7 +225,7 @@ async function main() {
 
                 for (let i = 0; i < targetColumnsBtns.length; i++) {
                     try {
-                        // 💡 各セクションの処理に入る前に必ず画面を完全クリーンにする
+                        // 💡 各セクションの処理に入る前に必ず画面を完全クリーンにする（残留パネル対策）
                         await dismissAllModals(page);
 
                         let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
@@ -298,7 +308,7 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了直後に確実にモーダルを閉じる処理（余白クリック＋Escape）
+                        // 💡 投稿完了直後に自動で開くサイドパネルを強制消去する
                         await page.waitForTimeout(4000);
                         await dismissAllModals(page);
                         await page.waitForTimeout(2000);

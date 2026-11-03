@@ -76,13 +76,13 @@ async function attachImageForTopic(page) {
     }
 
     try {
-        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル"), button[aria-label*="アップロード"]');
+        const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル"), button[aria-label*="アップ'], button[data-testid*="attachment"]');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
             await page.waitForTimeout(1000);
         }
 
-        const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"], button:has-text("ファイル")');
+        const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"], button:has-text("ファイル"), div:has-text("アップロード")');
         if (uploadOption) {
             const [fileChooser] = await Promise.all([
                 page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null),
@@ -90,7 +90,7 @@ async function attachImageForTopic(page) {
             ]);
             if (fileChooser) {
                 await fileChooser.setFiles(IMAGE_PATH);
-                await page.waitForTimeout(3500);
+                await page.waitForTimeout(4000); // 画像のプレビュー表示を長めに待つ
                 return;
             }
         }
@@ -98,7 +98,7 @@ async function attachImageForTopic(page) {
         const fileInputs = await page.$$('input[type="file"]');
         if (fileInputs.length > 0) {
             await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
-            await page.waitForTimeout(3500);
+            await page.waitForTimeout(4000);
         }
     } catch (err) {
         console.log('⚠️ 画像の添付中に軽微なエラーが発生しました:', err.message);
@@ -185,17 +185,10 @@ async function main() {
                 console.log(`🔄 【 処理ラウンド ${round} / 2 回目 】`);
                 console.log(`========================================`);
 
-                // ==========================================
-                // 1. 確実に各セクションの「＋」ボタンのリストを直接取得して順次投稿
-                // ==========================================
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await dismissAllModals(page);
 
-                // 💡 各セクションのヘッダーやカラム内にある「＋」ボタンだけに厳密に絞り込む
-                // （誤検知を防ぐため、セクションコンテナの直下にある「＋」ボタンや「投稿を追加」ボタンを直接狙う）
                 let sectionAddBtns = await page.$$('div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), section button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
-                
-                // もしセレクタで絞り込みすぎて0個の場合はフォールバックとして画面上の「＋」ボタンを取得
                 if (sectionAddBtns.length === 0 || sectionAddBtns.length > 20) {
                     sectionAddBtns = await page.$$('button:has-text("+")');
                 }
@@ -206,14 +199,12 @@ async function main() {
                     try {
                         await dismissAllModals(page);
 
-                        // 毎ループごとにボタンを最新状態で再取得
                         let freshBtns = await page.$$('div[data-section-id] button:has-text("+"), .section-container button:has-text("+"), section button:has-text("+"), button[aria-label*="投稿を追加"], button[aria-label*="Add post"]');
                         if (freshBtns.length === 0 || freshBtns.length > 20) {
                             freshBtns = await page.$$('button:has-text("+")');
                         }
 
                         const targetBtn = freshBtns[i];
-
                         if (!targetBtn) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
@@ -221,7 +212,6 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
                         await targetBtn.scrollIntoViewIfNeeded();
-                        
                         await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
                             await dismissAllModals(page);
                             await targetBtn.click({ force: true });
@@ -233,7 +223,7 @@ async function main() {
                         if (titleInput) {
                             await titleInput.click();
                             await titleInput.fill(TOPIC_TITLE);
-                            await page.waitForTimeout(500);
+                            await page.waitForTimeout(800);
                         }
 
                         // 本文入力
@@ -241,35 +231,41 @@ async function main() {
                         if (bodyEditor) {
                             await bodyEditor.click();
                             await page.keyboard.insertText(TOPIC_MESSAGE);
-                            await page.waitForTimeout(800);
+                            await page.waitForTimeout(1000);
                         }
 
                         // 画像添付
                         await attachImageForTopic(page);
 
-                        // 「公開」ボタンを確実にクリック
+                        // 💡 「公開」ボタンを確実に押し、ボタンが消える（モーダルが閉じる）までしっかり待機する
                         let published = false;
-                        for (let attempt = 0; attempt < 3; attempt++) {
+                        for (let attempt = 0; attempt < 5; attempt++) {
                             const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
-                            if (publishBtn && await publishBtn.isVisible()) {
+                            if (publishBtn) {
                                 try {
+                                    const isVisible = await publishBtn.isVisible();
                                     const isDisabled = await publishBtn.evaluate(el => el.disabled || el.getAttribute('aria-disabled') === 'true');
-                                    if (!isDisabled) {
+                                    if (isVisible && !isDisabled) {
                                         await publishBtn.click({ force: true });
                                         published = true;
+                                        console.log(`🚀 「公開」ボタンをクリックしました (試行 ${attempt + 1})`);
+                                        await page.waitForTimeout(3000);
                                         break;
                                     }
                                 } catch (e) {}
                             }
-                            await page.waitForTimeout(600);
+                            await page.waitForTimeout(800);
                         }
 
+                        // 万が一「公開」ボタンが押せなかった場合のフォールバック
                         if (!published) {
+                            console.log('⚠️ 「公開」ボタンが見つからないため、Ctrl+Enterで送信を試みます。');
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        await page.waitForTimeout(8000); 
-                        console.log(`✅ [セクション ${i + 1}] 投稿が完了しました！`);
+                        // モダールの完全な消失とデータの反映を長めに待つ
+                        await page.waitForTimeout(6000);
+                        console.log(`✅ [セクション ${i + 1}] 投稿処理が完了しました！`);
 
                         await takeStepScreenshot(page, `round${round}-section-${i + 1}`, accountNum);
 
@@ -330,7 +326,7 @@ async function main() {
                             await page.waitForTimeout(800);
 
                             await page.keyboard.press('Enter');
-                            await page.waitForTimeout(7000); 
+                            await page.waitForTimeout(6000); 
                         }
 
                         console.log(`✅ コメント投稿完了 (${safetyLimit + 1}件目)`);
@@ -348,7 +344,7 @@ async function main() {
                 if (round < 2) {
                     console.log('🔄 次のラウンドへ向けてボードを再読み込みします...');
                     await page.reload({ waitUntil: 'domcontentloaded' });
-                    await page.waitForTimeout(5000);
+                    await page.waitForTimeout(6000);
                 }
             }
 

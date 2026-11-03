@@ -47,7 +47,7 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルや邪魔なパネルを閉じるヘルパー
+// 🧹 モーダルやエラーオーバーレイを完全に消去するヘルパー
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
@@ -55,7 +55,8 @@ async function dismissAllModals(page) {
     }
     try {
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください")');
+            // 「もう一度お試しください」や各種エラーポップアップ、アラート要素をすべて強制削除
+            const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert, div:has-text("もう一度お試しください"), div:has-text("エラー")');
             overlays.forEach(el => {
                 if (!el.closest('.board-container')) {
                     el.remove();
@@ -215,7 +216,12 @@ async function main() {
 
                     console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
                     await targetBtn.scrollIntoViewIfNeeded();
-                    await targetBtn.click({ force: true });
+                    
+                    // クリック時にエラーオーバーレイがある場合は消去してリトライ
+                    await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
+                        await dismissAllModals(page);
+                        await targetBtn.click({ force: true });
+                    });
                     await page.waitForTimeout(1500);
 
                     // 件名入力

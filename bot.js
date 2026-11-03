@@ -51,7 +51,7 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(150);
     }
     try {
         await page.evaluate(() => {
@@ -63,7 +63,7 @@ async function dismissAllModals(page) {
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -178,34 +178,24 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクション（カラム）への新規投稿作成（厳密なボタン絞り込み版）
+            // 1. 各セクションへの新規投稿作成（確実なループ処理）
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // 各セクションのカラム内にある「投稿を追加」または「＋」ボタンを直接正確に取得する
-            // 誤検知を防ぐため、aria-label または特定のセクション追加ボタンクラスに絞り込む
-            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn';
-            let addButtons = await page.$$(addButtonsSelector);
+            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, button:has-text("+"), div.section-add-button';
+            const initialBtns = await page.$$(addButtonsSelector);
+            const totalSections = initialBtns.length > 0 ? initialBtns.length : 6;
+            console.log(`🔍 検出されたセクション投稿ボタン数: ${totalSections}個`);
 
-            // もし上記でうまく取れない場合のフォールバック（画面内のすべてのセクション用「＋」ボタン）
-            if (addButtons.length === 0 || addButtons.length > 20) {
-                addButtons = await page.$$('button:has-text("+"), div.section-add-button');
-            }
-
-            console.log(`🔍 検出された有効なセクション投稿ボタン数: ${addButtons.length}個`);
-
-            for (let i = 0; i < addButtons.length; i++) {
+            for (let i = 0; i < totalSections; i++) {
                 try {
                     await dismissAllModals(page);
 
-                    // ボタン要素を毎回安全に再取得
-                    let currentBtns = await page.$$(addButtonsSelector);
-                    if (currentBtns.length === 0) {
-                        currentBtns = await page.$$('button:has-text("+"), div.section-add-button');
-                    }
-
+                    // ボタンを毎回再取得してインデックスで確実にクリック
+                    const currentBtns = await page.$$(addButtonsSelector);
                     const targetBtn = currentBtns[i];
+
                     if (!targetBtn) {
                         console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                         continue;
@@ -235,7 +225,7 @@ async function main() {
                     // 画像添付
                     await attachImageForTopic(page);
 
-                    // 💡 「公開」ボタンクリックまたはCtrl+Enter送信
+                    // 「公開」ボタンをクリック、またはショートカットで送信
                     let published = false;
                     const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
                     if (publishBtn) {
@@ -247,10 +237,11 @@ async function main() {
 
                     if (!published) {
                         await page.keyboard.press('Control+Enter');
-                        console.log(`⚠️ [セクション ${i + 1}] ショートカット（Ctrl+Enter）で送信しました。`);
                     }
 
-                    await page.waitForTimeout(4000); 
+                    // 💡 投稿がサーバーに反映され、モーダルが閉じるまでしっかり待機
+                    await page.waitForTimeout(5000); 
+                    console.log(`✅ [セクション ${i + 1}] 投稿が完了しました！`);
 
                     if (i === 0) {
                         await takeStepScreenshot(page, 'after-first-post', accountNum);

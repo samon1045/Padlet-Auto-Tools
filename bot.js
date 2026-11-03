@@ -2,11 +2,11 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-// 📝 設定値（空文字の場合はデフォルト値をセット）
+// 📝 設定値
 const TOPIC_TITLE = process.env.TOPIC_TITLE || process.env.CUSTOM_MESSAGE || 'さーもん万歳';
 const TOPIC_MESSAGE = process.env.TOPIC_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
 const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAGE || 'さーもん万歳！！';
-const IMAGE_PATH = path.join(__dirname, '_______.gif');
+const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif');
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
@@ -38,7 +38,7 @@ async function sendDiscordNotification(boardUrl, accountIndex) {
     }
 }
 
-// 📸 行動ごとにスクリーンショットを撮る便利関数
+// 📸 スクリーンショット保存用
 async function takeStepScreenshot(page, stepName, accountIndex) {
     try {
         const fileName = `screenshot-acc${accountIndex}-${stepName.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
@@ -47,8 +47,12 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 高速クリーンアップ用ヘルパー
+// 🧹 モーダルや邪魔なパネルを閉じるヘルパー
 async function dismissAllModals(page) {
+    for (let i = 0; i < 2; i++) {
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(100);
+    }
     try {
         await page.evaluate(() => {
             const overlays = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], [data-testid*="alert"], .fixed.inset-0, div.z-alert');
@@ -59,10 +63,10 @@ async function dismissAllModals(page) {
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(50);
+    await page.waitForTimeout(200);
 }
 
-// 🖼️ 高速画像アップロード
+// 🖼️ 画像アップロード処理
 async function attachImage(page, accountIndex) {
     if (!fs.existsSync(IMAGE_PATH)) return;
 
@@ -70,18 +74,19 @@ async function attachImage(page, accountIndex) {
         const attachTrigger = await page.$('button[aria-label*="Attach"], button[aria-label*="file"], button[aria-label*="追加"], button[data-testid*="Upload"], button:has-text("Upload"), button:has-text("ファイル")');
         if (attachTrigger) {
             await attachTrigger.click({ force: true });
-            await page.waitForTimeout(100);
+            await page.waitForTimeout(300);
         }
 
         const uploadOption = await page.$('button:has-text("Upload"), [data-testid*="Upload"]');
         if (uploadOption) {
             const [fileChooser] = await Promise.all([
-                page.waitForEvent('filechooser', { timeout: 1000 }).catch(() => null),
+                page.waitForEvent('filechooser', { timeout: 2000 }).catch(() => null),
                 uploadOption.click({ force: true })
             ]);
             if (fileChooser) {
                 await fileChooser.setFiles(IMAGE_PATH);
-                await page.waitForTimeout(300);
+                await page.waitForTimeout(800);
+                await takeStepScreenshot(page, 'image-uploaded', accountIndex);
                 return;
             }
         }
@@ -89,7 +94,7 @@ async function attachImage(page, accountIndex) {
         const fileInputs = await page.$$('input[type="file"]');
         if (fileInputs.length > 0) {
             await fileInputs[fileInputs.length - 1].setInputFiles(IMAGE_PATH);
-            await page.waitForTimeout(300);
+            await page.waitForTimeout(800);
         }
     } catch (err) {}
 }
@@ -101,7 +106,6 @@ async function main() {
     }
 
     const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
-    
     const authList = [];
     let currentBlock = '';
     let bracketCount = 0;
@@ -141,11 +145,7 @@ async function main() {
                 return cookie;
             });
 
-            const formattedState = {
-                cookies: cleanedCookies,
-                origins: []
-            };
-            fs.writeFileSync(authFile, JSON.stringify(formattedState, null, 2));
+            fs.writeFileSync(authFile, JSON.stringify({ cookies: cleanedCookies, origins: [] }, null, 2));
         } catch (e) {
             console.error(`❌ アカウント #${accountNum} のクッキー処理に失敗しました:`, e.message);
             continue;
@@ -162,24 +162,27 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(1500);
+            await page.waitForTimeout(3000);
+
+            await takeStepScreenshot(page, 'after-goto', accountNum);
 
             if (page.url().includes('login') || page.url().includes('verify') || await page.$('text=registered users only')) {
                 throw new Error('クッキーの有効期限が切れているか、ログインしていません。');
             }
 
-            console.log('🚀 高速モードで処理を開始します！');
+            console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 新規投稿作成（超高速化）
+            // 1. 新規投稿作成（全セクション対応）
             // ==========================================
-            const TOPIC_ROUNDS = 3;
+            const TOPIC_ROUNDS = 2; // 各セクションを確実に2回ずつ巡回
 
             for (let tRound = 1; tRound <= TOPIC_ROUNDS; tRound++) {
                 console.log(`\n📂 【新規投稿 ラウンド ${tRound}回目】`);
                 
                 await dismissAllModals(page);
                 const addButtons = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                console.log(`🔍 検出されたセクション数（投稿ボタン）: ${addButtons.length}個`);
 
                 for (let i = 0; i < addButtons.length; i++) {
                     try {
@@ -191,12 +194,14 @@ async function main() {
                         if (!targetAddBtn) continue;
 
                         await targetAddBtn.click({ force: true });
-                        await page.waitForTimeout(300);
+                        await page.waitForTimeout(1000);
 
                         // 件名入力
                         const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"]');
                         if (titleInput) {
+                            await titleInput.click();
                             await titleInput.fill(TOPIC_TITLE);
+                            await page.waitForTimeout(200);
                         }
 
                         // 本文入力
@@ -204,22 +209,27 @@ async function main() {
                         if (bodyEditor) {
                             await bodyEditor.click();
                             await page.keyboard.insertText(TOPIC_MESSAGE);
+                            await page.waitForTimeout(300);
                         }
 
                         // 画像添付
                         await attachImage(page, accountNum);
-                        await page.waitForTimeout(300);
+                        await page.waitForTimeout(1000);
 
-                        // 「公開」ボタンをクリック ＋ Enter連打で爆速送信
+                        // 「公開」ボタンをクリック ＋ Enterキー送信
                         const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish")');
                         if (publishBtn && await publishBtn.isVisible()) {
                             await publishBtn.click({ force: true });
+                            console.log(`✅ [セクション ${i + 1}] 「公開」ボタンをクリックしました！`);
                         }
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(800);
+                        await page.waitForTimeout(2500); // 反映待ち
 
+                        if (tRound === 1 && i === 0) {
+                            await takeStepScreenshot(page, 'after-first-post', accountNum);
+                        }
                     } catch (err) {
-                        // エラー時はスキップして爆速維持
+                        console.log(`⚠️ 投稿処理中エラー (セクション ${i + 1}):`, err.message);
                     } finally {
                         await dismissAllModals(page);
                     }
@@ -227,9 +237,9 @@ async function main() {
             }
 
             // ==========================================
-            // 2. コメント巡回（超高速化）
+            // 2. コメント巡回
             // ==========================================
-            const COMMENT_ROUNDS = 25;
+            const COMMENT_ROUNDS = 5;
 
             for (let round = 1; round <= COMMENT_ROUNDS; round++) {
                 console.log(`\n⚡ 【コメント巡回 ラウンド ${round}回目】`);
@@ -259,26 +269,34 @@ async function main() {
 
                     try {
                         await targetBtn.click({ force: true });
-                        await page.waitForTimeout(200);
+                        await page.waitForTimeout(800);
 
                         let editor = await page.$('div[contenteditable="true"], textarea');
+                        if (!editor) {
+                            editor = await page.waitForSelector('div[contenteditable="true"], textarea', { timeout: 2000 }).catch(() => null);
+                        }
+
                         if (editor) {
                             await editor.click();
                             await page.keyboard.insertText(COMMENT_MESSAGE);
+                            await page.waitForTimeout(200);
+
                             await attachImage(page, accountNum);
+
                             await page.keyboard.press('Enter');
-                            await page.waitForTimeout(500);
+                            await page.waitForTimeout(1500);
 
                             const nameInput = await page.$('input[placeholder*="name"], input[type="text"]');
                             const doneBtn = await page.$('button:has-text("Done"), button:has-text("完了")');
                             if (nameInput && doneBtn && await nameInput.isVisible()) {
                                 await nameInput.fill('さーもん万歳！！');
                                 await doneBtn.click({ force: true });
-                                await page.waitForTimeout(200);
+                                await page.waitForTimeout(500);
                             }
                         }
 
                         processedCount++;
+                        console.log(`✅ コメント投稿完了 (${processedCount件目})`);
                     } catch (err) {
                         processedCount++;
                     } finally {
@@ -287,18 +305,21 @@ async function main() {
                 }
             }
 
-            console.log('\n🎉 全ての高速処理が完了しました！');
+            console.log('\n🎉 全ての処理が完了しました！');
             await takeStepScreenshot(page, 'success-final', accountNum);
 
             success = true;
             await browser.close();
 
+            // 🔔 Discord通知の実行
             await sendDiscordNotification(TARGET_BOARD_URL, accountNum);
             break;
 
         } catch (error) {
             console.error(`❌ アカウント #${accountNum} でエラーが発生しました:`, error.message);
+            await takeStepScreenshot(page, 'error-occurred', accountNum);
             await browser.close();
+            console.log('🔄 次のアカウントに切り替えてリトライします...');
         }
     }
 

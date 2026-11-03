@@ -49,24 +49,22 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
     } catch (e) {}
 }
 
-// 🧹 モーダルやサイドパネル、詳細プレビューを完全に強制消去するヘルパー
+// 🧹 サイドパネルやモーダル、邪魔なオーバーレイを強制的に消去する最強のヘルパー
 async function dismissAllModals(page) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
     }
     try {
-        // 画面上部の何もない余白（ヘッダー部分など）をクリックして強制的にフォーカスを戻す
-        await page.mouse.click(200, 30);
-        await page.waitForTimeout(200);
-
-        // 邪魔なサイドパネルやダイアログをDOMから強制削除
+        // DOM上からサイドパネル（surfaceActivityPanel）やオーバーレイを強制削除する
         await page.evaluate(() => {
-            const panels = document.querySelectorAll('[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"]');
-            panels.forEach(el => el.remove());
+            const elementsToRemove = document.querySelectorAll(
+                '[data-testid*="surfaceActivityPanel"], .oz-overlay, [data-testid*="contentPicker"], [data-testid*="modal"], div[role="dialog"], .fixed.inset-0'
+            );
+            elementsToRemove.forEach(el => el.remove());
         });
     } catch (e) {}
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1000);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -245,7 +243,7 @@ async function main() {
                         console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetObj.x)}) に投稿を作成中...`);
                         await targetObj.btn.scrollIntoViewIfNeeded();
                         
-                        // 💡 確実にクリックするため、位置座標を指定したマウス絶対クリックを併用
+                        // 座標指定の絶対クリックで確実に対象を叩く
                         const box = await targetObj.btn.boundingBox();
                         if (box) {
                             await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -298,7 +296,7 @@ async function main() {
                             await page.keyboard.press('Control+Enter');
                         }
 
-                        // 💡 投稿完了直後に自動で開くサイドパネルを即座に消去する
+                        // 💡 投稿完了直後に自動で開くサイドパネルを強制消去する
                         await page.waitForTimeout(4000);
                         await dismissAllModals(page);
                         await page.waitForTimeout(2000);

@@ -51,7 +51,7 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
 async function dismissAllModals(page) {
     for (let i = 0; i < 3; i++) {
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(150);
+        await page.waitForTimeout(200);
     }
     try {
         await page.evaluate(() => {
@@ -63,7 +63,7 @@ async function dismissAllModals(page) {
             });
         });
     } catch (e) {}
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 }
 
 // 🖼️ 新規投稿用の画像アップロード処理
@@ -178,49 +178,62 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクション単位で名前と専用＋ボタンを完全分離して取得
+            // 1. 各セクションの名称をベースに、毎ループごとに要素を再取得して確実に投稿
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // ボード上の各セクション列（カラム）を正確に取得
-            const sectionContainers = await page.$$('div[data-section-id], .section-container, section');
-            console.log(`🔍 検出されたセクション列数: ${sectionContainers.length}個`);
+            // 初回にセクションの「名前」のリストだけを先に正確に取得しておく
+            const initialContainers = await page.$$('div[data-section-id], .section-container, section');
+            const sectionNames = [];
 
-            const sectionsData = [];
-
-            for (let i = 0; i < sectionContainers.length; i++) {
-                const container = sectionContainers[i];
+            for (let i = 0; i < initialContainers.length; i++) {
                 try {
-                    // 各セクションのタイトルを取得
-                    const titleEl = await container.$('h2, h3, .section-title, [data-testid*="sectionTitle"]');
-                    let sectionName = titleEl ? await titleEl.textContent() : `セクション ${i + 1}`;
-                    sectionName = sectionName.trim();
-
-                    // 💡 「右下の全体投稿ボタン」を完全に除外するため、このカラムコンテナ内の要素だけに絞る
-                    const addBtn = await container.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-
-                    if (addBtn) {
-                        sectionsData.push({ name: sectionName, button: addBtn });
-                        console.log(`  📌 対象セクション登録: 「${sectionName}」`);
+                    const titleEl = await initialContainers[i].$('h2, h3, .section-title, [data-testid*="sectionTitle"]');
+                    let sName = titleEl ? await titleEl.textContent() : `セクション ${i + 1}`;
+                    sName = sName.trim();
+                    
+                    // 内部に投稿ボタンがあるものだけを有効なセクション名として記録
+                    const hasBtn = await initialContainers[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                    if (hasBtn && sName) {
+                        sectionNames.push(sName);
                     }
                 } catch (e) {}
             }
 
-            console.log(`✨ 有効なセクション対象数: ${sectionsData.length}個`);
+            console.log(`✨ 投稿対象セクション名一覧:`, sectionNames);
 
-            // 取得した各セクションを順番に確実に指名して投稿を作成
-            for (let i = 0; i < sectionsData.length; i++) {
-                const target = sectionsData[i];
+            // 取得したセクション名を1つずつ順番にループして、毎回DOMを再スキャンして安全に処理
+            for (let i = 0; i < sectionNames.length; i++) {
+                const targetName = sectionNames[i];
                 try {
                     await dismissAllModals(page);
+                    console.log(`\n➡️ セクション「${targetName}」に投稿を作成中...`);
 
-                    console.log(`➡️ セクション「${target.name}」に投稿を作成中...`);
-                    await target.button.scrollIntoViewIfNeeded();
-                    
-                    await target.button.click({ force: true, timeout: 5000 }).catch(async () => {
+                    // 💡 毎回最新のDOMから「現在のセクション要素とボタン」を再検索する（古い要素参照によるズレを防ぐため）
+                    const currentContainers = await page.$$('div[data-section-id], .section-container, section');
+                    let targetBtn = null;
+
+                    for (const container of currentContainers) {
+                        const titleEl = await container.$('h2, h3, .section-title, [data-testid*="sectionTitle"]');
+                        if (titleEl) {
+                            const currentName = (await titleEl.textContent()).trim();
+                            if (currentName === targetName) {
+                                targetBtn = await container.$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!targetBtn) {
+                        console.log(`⚠️ セクション「${targetName}」の投稿ボタンが見つからないためスキップします。`);
+                        continue;
+                    }
+
+                    await targetBtn.scrollIntoViewIfNeeded();
+                    await targetBtn.click({ force: true, timeout: 5000 }).catch(async () => {
                         await dismissAllModals(page);
-                        await target.button.click({ force: true });
+                        await targetBtn.click({ force: true });
                     });
                     await page.waitForTimeout(2000);
 
@@ -264,14 +277,15 @@ async function main() {
                         await page.keyboard.press('Control+Enter');
                     }
 
-                    await page.waitForTimeout(7000); 
-                    console.log(`✅ [${target.name}] 投稿が完了しました！`);
+                    // 💡 投稿が確実にボードに反映され、画面が落ち着くまで長めに待機
+                    await page.waitForTimeout(8000); 
+                    console.log(`✅ [${targetName}] 投稿が完了しました！`);
 
                     if (i === 0) {
                         await takeStepScreenshot(page, 'after-first-post', accountNum);
                     }
                 } catch (err) {
-                    console.log(`⚠️ 投稿処理中エラー (${target.name}):`, err.message);
+                    console.log(`⚠️ 投稿処理中エラー (${targetName}):`, err.message);
                     await dismissAllModals(page);
                 } finally {
                     await dismissAllModals(page);

@@ -178,44 +178,34 @@ async function main() {
             console.log('ボードの読み込み完了！処理を開始します...');
 
             // ==========================================
-            // 1. 各セクション（カラム）を個別に特定して新規投稿を作成
+            // 1. 各セクションへの新規投稿作成（確実なボタン数限定版）
             // ==========================================
             console.log(`\n📂 【全セクションへの新規投稿開始】`);
             await dismissAllModals(page);
 
-            // セクションごとの「＋」ボタンを確実につかむため、セクション要素（カラム）を列挙する
-            // Padletの一般的なセクション構造に対応するセレクタ
-            const sections = await page.$$('section, div[data-section-id], .section-container, div.flex-col > div.relative');
-            console.log(`🔍 検出されたセクション数（カラム単位）: ${sections.length}個`);
+            // セクション内の各カラムにある「＋」ボタンを特定するためのセレクタ
+            const addButtonsSelector = 'button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button';
+            
+            // 最初に存在する正確なボタン数を取得する
+            const addButtons = await page.$$(addButtonsSelector);
+            console.log(`🔍 検出されたセクションの投稿ボタン数: ${addButtons.length}個`);
 
-            // セクションがうまく取れない場合のフォールバック（従来のボタン一覧）
-            const targetCount = sections.length > 0 ? sections.length : (await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn')).length;
-
-            for (let i = 0; i < targetCount; i++) {
+            for (let i = 0; i < addButtons.length; i++) {
                 try {
                     await dismissAllModals(page);
 
-                    // 各セクション内の「＋」ボタンを直接狙い撃ちする
-                    let addBtn = null;
-                    if (sections.length > 0) {
-                        // セクション内部の「＋」または追加ボタンを探す
-                        addBtn = await sections[i].$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                    }
-                    
-                    if (!addBtn) {
-                        // フォールバック：全体から取得
-                        const allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, div.section-add-button, button:has-text("+")');
-                        addBtn = allAddBtns[i];
-                    }
+                    // ループの都度、ボタンを再取得して確実に対象をクリック
+                    const currentButtons = await page.$$(addButtonsSelector);
+                    const targetBtn = currentButtons[i];
 
-                    if (!addBtn) {
-                        console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
+                    if (!targetBtn) {
+                        console.log(`⚠️ セクション ${i + 1} のボタンが見つからないためスキップします。`);
                         continue;
                     }
 
                     console.log(`➡️ セクション ${i + 1} に投稿を作成中...`);
-                    await addBtn.scrollIntoViewIfNeeded();
-                    await addBtn.click({ force: true });
+                    await targetBtn.scrollIntoViewIfNeeded();
+                    await targetBtn.click({ force: true });
                     await page.waitForTimeout(1200);
 
                     // 件名入力
@@ -267,13 +257,13 @@ async function main() {
             }
 
             // ==========================================
-            // 2. 全投稿へのコメント巡回（すべての投稿を網羅）
+            // 2. 全投稿へのコメント巡回
             // ==========================================
             console.log(`\n⚡ 【全投稿へのコメント巡回開始】`);
-            let commentedIds = new Set(); // すでにコメントした投稿を重複させないためのセット
+            let commentedIds = new Set();
             let safetyLimit = 0;
 
-            while (safetyLimit < 100) { // 最大100件まで走査
+            while (safetyLimit < 100) {
                 await dismissAllModals(page);
 
                 // レートリミット検知
@@ -283,7 +273,6 @@ async function main() {
                     break;
                 }
 
-                // 画面上にあるすべての「コメントを追加」ボタンを取得
                 const commentSelectors = [
                     'button:has-text("Add comment")',
                     'button:has-text("コメントを追加")',
@@ -294,7 +283,6 @@ async function main() {
 
                 const foundBtns = await page.$$(commentSelectors.join(', '));
                 
-                // まだコメントしていないボタンを探して1つずつ処理
                 let targetBtn = null;
                 let targetIndex = -1;
 
@@ -327,13 +315,13 @@ async function main() {
                         await page.waitForTimeout(500);
 
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(5000); // 💡 連投制限を防ぐための待機時間
+                        await page.waitForTimeout(5000); // 💡 待機時間
                     }
 
                     commentedIds.add(targetIndex);
                     console.log(`✅ コメント投稿完了 (${commentedIds.size}件目)`);
                 } catch (err) {
-                    commentedIds.add(targetIndex); // エラーでも無限ループ回避のために追加
+                    commentedIds.add(targetIndex);
                     console.log(`⚠️ コメント処理スキップ/エラー:`, err.message);
                 } finally {
                     await dismissAllModals(page);

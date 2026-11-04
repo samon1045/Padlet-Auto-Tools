@@ -120,7 +120,6 @@ async function attachImageForTopic(page) {
 
 // 🤖 Gemini APIに画面情報を送り、各セクションのプラスボタンのインデックスや座標を特定させる関数
 async function askGeminiForSectionButtons(page) {
-    // 1. ページ上のすべてのボタン候補の情報を抽出
     const buttonsInfo = await page.evaluate(() => {
         const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
         return allEls.map((el, index) => {
@@ -148,7 +147,6 @@ async function askGeminiForSectionButtons(page) {
     }
 
     try {
-        // スクリーンショットを撮影してGeminiに渡す準備
         const screenshotPath = await takeStepScreenshot(page, 'ai-analysis', 1);
         let imagePart = null;
         if (screenshotPath && fs.existsSync(screenshotPath)) {
@@ -161,13 +159,7 @@ async function askGeminiForSectionButtons(page) {
             };
         }
 
-        const prompt = `
-あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、**各セクション（カラム）の列にある新規投稿用の「＋」ボタン（またはセクション追加ボタン）**に該当する要素の `domIndex` を、**左から右の列順（X座標の昇順）**に配列としてJSON形式でのみ返してください。
-余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。
-
-ボタンリスト:
-${JSON.stringify(buttonsInfo, null, 2)}
-        `;
+        const prompt = 'あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、各セクション（カラム）の列にある新規投稿用のプラスボタンに該当する要素の domIndex を、左から右の列順（X座標の昇順）に配列としてJSON形式でのみ返してください。余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。\n\nボタンリスト:\n' + JSON.stringify(buttonsInfo, null, 2);
 
         const contents = imagePart ? [prompt, imagePart] : [prompt];
         const response = await ai.models.generateContent({
@@ -176,7 +168,6 @@ ${JSON.stringify(buttonsInfo, null, 2)}
         });
 
         const textResponse = response.text.trim();
-        // JSON部分だけを抽出すべく正規表現でパース
         const match = textResponse.match(/\[[\d,\s]*\]/);
         if (match) {
             const indices = JSON.parse(match[0]);
@@ -187,7 +178,6 @@ ${JSON.stringify(buttonsInfo, null, 2)}
         console.log('⚠️ Gemini APIによる解析中にエラーが発生しました。フォールバックします:', err.message);
     }
 
-    // フォールバック
     return buttonsInfo
         .filter(b => b.text.includes('+') || b.ariaLabel.includes('Add') || b.ariaLabel.includes('追加'))
         .sort((a, b) => a.x - b.x)
@@ -200,12 +190,12 @@ async function main() {
         process.exit(1);
     }
 
-    const authsEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
+    const rawKeysEnv = process.env.AUTH_JSONS || process.env.AUTH_JSON || '';
     const authList = [];
     let currentBlock = '';
     let bracketCount = 0;
 
-    for (const char of authsEnv) {
+    for (const char of rawKeysEnv) {
         if (char === '[') bracketCount++;
         if (bracketCount > 0) currentBlock += char;
         if (char === ']') {
@@ -276,7 +266,6 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 🤖 Gemini AIにボタンの位置を解析させる
                 const targetDomIndices = await askGeminiForSectionButtons(page);
                 console.log(`🔍 AIが選定した有効なセクション列数: ${targetDomIndices.length}個`);
 
@@ -290,7 +279,6 @@ async function main() {
 
                         const domIndexToClick = targetDomIndices[i];
 
-                        // ブラウザ側で指定されたDOMインデックスの要素を安全にクリック
                         const clicked = await page.evaluate((targetIdx) => {
                             const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
                             const target = allEls[targetIdx];
@@ -317,7 +305,6 @@ async function main() {
 
                         await page.waitForTimeout(2000);
 
-                        // 件名入力欄の出現を待つ
                         let titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
                         if (!titleInput) {
                             titleInput = await page.waitForSelector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', { timeout: 4000 }).catch(() => null);
@@ -328,12 +315,10 @@ async function main() {
                             continue;
                         }
 
-                        // 件名入力
                         await titleInput.click();
                         await titleInput.fill(TOPIC_TITLE);
                         await page.waitForTimeout(600);
 
-                        // 本文入力
                         const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"], textarea');
                         if (bodyEditor) {
                             await bodyEditor.click();
@@ -341,10 +326,8 @@ async function main() {
                             await page.waitForTimeout(800);
                         }
 
-                        // 画像添付
                         await attachImageForTopic(page);
 
-                        // 「公開」ボタンをクリック
                         let published = false;
                         for (let attempt = 0; attempt < 5; attempt++) {
                             const publishBtn = await page.$('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]');

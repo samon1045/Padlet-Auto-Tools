@@ -192,21 +192,20 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 ブラウザ側（DOM）のJavaScriptを使って、各セクションにある「＋」ボタンの数を正確に把握する
+                // 💡 ブラウザ側でセクションの「＋」ボタンを検出する数を取得
                 const sectionCount = await page.evaluate(() => {
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const sectionBtns = buttons.filter(btn => {
-                        const rect = btn.getBoundingClientRect();
-                        const text = btn.innerText || '';
-                        const aria = btn.getAttribute('aria-label') || '';
-                        // 画面上部にあり、右下の全体投稿ボタン（X > 1000）ではないもの
-                        return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post'));
+                    const buttons = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"]'));
+                    const sectionBtns = buttons.filter(el => {
+                        const rect = el.getBoundingClientRect();
+                        const text = el.innerText || '';
+                        const aria = el.getAttribute('aria-label') || '';
+                        return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post') || el.classList.toString().includes('add'));
                     });
                     return sectionBtns.length;
                 });
 
                 console.log(`🔍 ブラウザ側で検出された有効なセクション列数: ${sectionCount}個`);
-                const maxSections = Math.min(sectionCount, 6);
+                const maxSections = Math.min(sectionCount > 0 ? sectionCount : 5, 6);
 
                 for (let i = 0; i < maxSections; i++) {
                     try {
@@ -214,21 +213,31 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
 
-                        // 💡 ブラウザ側で直接インデックスを指定して「＋」ボタンをクリックさせる
+                        // 💡 ブラウザ側でマウスイベント（mousedown, mouseup, click）を強制発火させて確実にフォームを開く
                         const clicked = await page.evaluate((targetIndex) => {
-                            const buttons = Array.from(document.querySelectorAll('button'));
-                            const sectionBtns = buttons.filter(btn => {
-                                const rect = btn.getBoundingClientRect();
-                                const text = btn.innerText || '';
-                                const aria = btn.getAttribute('aria-label') || '';
-                                return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post'));
+                            const elements = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"]'));
+                            const sectionBtns = elements.filter(el => {
+                                const rect = el.getBoundingClientRect();
+                                const text = el.innerText || '';
+                                const aria = el.getAttribute('aria-label') || '';
+                                return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post') || el.classList.toString().includes('add'));
                             });
                             
                             // X座標（左から右）の順にソート
                             sectionBtns.sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
 
-                            if (sectionBtns[targetIndex]) {
-                                sectionBtns[targetIndex].click();
+                            const target = sectionBtns[targetIndex];
+                            if (target) {
+                                // 複数のマウスイベントを順番に発火させて確実に反応させる
+                                ['mousedown', 'mouseup', 'click'].forEach(eventType => {
+                                    const event = new MouseEvent(eventType, {
+                                        view: window,
+                                        bubbles: true,
+                                        cancelable: true,
+                                        buttons: 1
+                                    });
+                                    target.dispatchEvent(event);
+                                });
                                 return true;
                             }
                             return false;
@@ -242,7 +251,11 @@ async function main() {
                         await page.waitForTimeout(2000);
 
                         // 件名入力欄の出現を待つ
-                        const titleInput = await page.waitForSelector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', { timeout: 4000 }).catch(() => null);
+                        let titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
+                        if (!titleInput) {
+                            titleInput = await page.waitForSelector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', { timeout: 4000 }).catch(() => null);
+                        }
+
                         if (!titleInput) {
                             console.log(`⚠️ [セクション ${i + 1}] 投稿フォームが開かなかったためスキップします。`);
                             continue;

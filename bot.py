@@ -12,11 +12,11 @@ TOPIC_MESSAGE = os.getenv("TOPIC_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さー�
 COMMENT_MESSAGE = os.getenv("COMMENT_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 
 try:
-    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "2")))
+    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "10")))
 except ValueError:
     TOTAL_ROUNDS = 2
 
-IMAGE_PATH = os.path.join(os.path.dirname(__file__), "_______.gif")
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), "a62e0a5b (1).gif")
 TARGET_BOARD_URL = os.getenv("TARGET_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
@@ -153,9 +153,23 @@ def main():
                                 print(f"⚠️ セクション {sec_idx + 1} のプラスボタンが見つかりませんでした。")
                                 continue
 
-                            time.sleep(2.0)
+                            time.sleep(1.5)
 
-                            page.keyboard.insert_text(TOPIC_TITLE)
+                            input_filled = False
+                            for sel in ['input[placeholder*="件名"]', 'input[placeholder*="Title"]', 'input[placeholder*="タイトル"]', 'input[type="text"]', 'div[contenteditable="true"]', 'textarea']:
+                                try:
+                                    el = page.query_selector(sel)
+                                    if el and el.is_visible():
+                                        el.click()
+                                        el.fill(TOPIC_TITLE)
+                                        input_filled = True
+                                        break
+                                except Exception:
+                                    pass
+
+                            if not input_filled:
+                                page.keyboard.insert_text(TOPIC_TITLE)
+
                             time.sleep(0.5)
                             page.keyboard.press("Tab")
                             time.sleep(0.3)
@@ -211,14 +225,30 @@ def main():
                             print("✨ すべてのコメント対象を巡回し終えました。")
                             break
                         
-                        time.sleep(1.2)
+                        time.sleep(1.5)
                         try:
                             editor = page.query_selector('div[contenteditable="true"], textarea')
                             if editor:
                                 editor.click()
                                 editor.fill(COMMENT_MESSAGE)
-                                time.sleep(0.5)
-                                page.keyboard.press("Enter")
+                                time.sleep(0.6)
+                                
+                                comment_submitted = False
+                                for c_btn_sel in ['button:has-text("コメント")', 'button:has-text("Comment")', 'button[type="submit"]', 'button[aria-label*="Send"]', 'button[aria-label*="送信"]']:
+                                    c_btn = page.query_selector(c_btn_sel)
+                                    if c_btn and c_btn.is_visible():
+                                        try:
+                                            c_btn.click(force=True)
+                                            comment_submitted = True
+                                            break
+                                        except Exception:
+                                            pass
+                                
+                                if not comment_submitted:
+                                    page.keyboard.press("Control+Enter")
+                                    time.sleep(0.3)
+                                    page.keyboard.press("Enter")
+
                                 time.sleep(2.5)
                                 print(f"✅ コメント送信完了 ({comment_idx + 1}件目)")
                             else:

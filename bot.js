@@ -192,11 +192,8 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 各セクション列にある「＋」ボタンのみを厳密に抽出
-                let allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn');
-                if (allAddBtns.length === 0) {
-                    allAddBtns = await page.$$('button:has-text("+")');
-                }
+                // 💡 各セクション列の「＋」ボタンやプラスアイコンを含む要素を幅広く取得
+                let allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], button:has-text("+")');
                 
                 const validSectionBtns = [];
                 const seenX = new Set();
@@ -204,12 +201,12 @@ async function main() {
                 for (const btn of allAddBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // 右下の全体投稿ボタン（X > 1000 や Y > 400）を除外
-                        if (box && box.y > 50 && box.y < 350 && box.x < 1000) {
+                        // 右下の全体投稿ボタン（X > 1000）や下部の不要な要素を完全に除外
+                        if (box && box.y > 40 && box.y < 350 && box.x < 1000) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
                                 seenX.add(roundedX);
-                                validSectionBtns.push({ btn: btn, x: box.x });
+                                validSectionBtns.push({ btn: btn, x: box.x, y: box.y });
                             }
                         }
                     } catch (e) {}
@@ -224,23 +221,19 @@ async function main() {
                     try {
                         await closeAllModalsAndPopups(page);
 
-                        // 再スキャン
-                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn');
-                        if (refreshBtns.length === 0) {
-                            refreshBtns = await page.$$('button:has-text("+")');
-                        }
-
+                        // 最新のボタン位置を再スキャン
+                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], button:has-text("+")');
                         const currentList = [];
                         const currentSeenX = new Set();
 
                         for (const b of refreshBtns) {
                             try {
                                 const box = await b.boundingBox();
-                                if (box && box.y > 50 && box.y < 350 && box.x < 1000) {
+                                if (box && box.y > 40 && box.y < 350 && box.x < 1000) {
                                     const roundedX = Math.round(box.x / 50) * 50;
                                     if (!currentSeenX.has(roundedX)) {
                                         currentSeenX.add(roundedX);
-                                        currentList.push({ btn: b, x: box.x });
+                                        currentList.push({ btn: b, x: box.x, y: box.y });
                                     }
                                 }
                             } catch (e) {}
@@ -258,18 +251,21 @@ async function main() {
                         await targetBtn.scrollIntoViewIfNeeded();
                         await page.waitForTimeout(500);
 
-                        // 💡 「＋」ボタンを確実にクリック
-                        await targetBtn.click({ force: true });
+                        // 💡 確実にクリックするため、要素の中心を直接マウスで叩く
+                        const box = await targetBtn.boundingBox();
+                        if (box) {
+                            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                        } else {
+                            await targetBtn.click({ force: true });
+                        }
                         await page.waitForTimeout(1500);
 
-                        // 🔍 投稿ダイアログが開くまで最大5秒確認（開かなければマウス座標で再クリック）
+                        // 🔍 投稿ダイアログ（件名入力欄）が開いたかチェック。開いていなければ少し下や位置を変えて再クリック
                         let titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
-                        if (!titleInput) {
-                            const box = await targetBtn.boundingBox();
-                            if (box) {
-                                await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                                await page.waitForTimeout(1500);
-                            }
+                        if (!titleInput && box) {
+                            // 「＋」ボタンのすぐ下あたりをクリックしてみるフォールバック
+                            await page.mouse.click(box.x + box.width / 2, box.y + box.height + 20);
+                            await page.waitForTimeout(1500);
                             titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
                         }
 

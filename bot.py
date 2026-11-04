@@ -111,11 +111,10 @@ def attach_image_for_topic(page):
     except Exception as err:
         print(f"⚠️ 画像の添付中に軽微なエラーが発生しました: {err}")
 
-# 🔍 複数回（最大5〜10回）検査して安定したボタン要素群を特定する仕組み
 def ask_gemini_for_section_buttons(page, account_num):
     indices = []
     
-    for attempt in range(1, 6): # 最大5回検査して安定性を高める
+    for attempt in range(1, 6):
         try:
             buttons_info = page.evaluate("""() => {
                 const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
@@ -175,7 +174,6 @@ def ask_gemini_for_section_buttons(page, account_num):
             time.sleep(1.0)
 
     if not indices:
-        print("⚠️ AI解析が通らなかったため、ヒューリスティックなフォールバックを実行します。")
         buttons_info = page.evaluate("""() => {
             const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
             return allEls.map((el, index) => {
@@ -197,28 +195,24 @@ def main():
 
     if raw_auths_env:
         try:
-            # 💡 複数アカウントのクッキー配列を安全に抽出（Extra dataエラーを完全回避）
-            matches = re.findall(r'\[\s*\{.*?\}\s*\]', raw_auths_env, re.DOTALL)
-            if matches:
-                for m in matches:
-                    try:
-                        parsed_item = json.loads(m)
-                        if isinstance(parsed_item, list) and len(parsed_item) > 0:
-                            account_cookie_lists.append(parsed_item)
-                    except Exception:
-                        pass
-            
-            # もし正規表現で取れなければ通常のloadsを試す
-            if not account_cookie_lists:
-                parsed_env = json.loads(raw_auths_env)
-                if isinstance(parsed_env, list):
-                    if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
-                        account_cookie_lists = parsed_env
-                    else:
-                        account_cookie_lists = [parsed_env]
+            # 💡 安全かつ厳密な2次元配列の抽出
+            parsed_env = json.loads(raw_auths_env)
+            if isinstance(parsed_env, list):
+                if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
+                    account_cookie_lists = parsed_env
+                else:
+                    account_cookie_lists = [parsed_env]
         except Exception as err:
-            print(f"❌ AUTH_JSONS の安全パースに失敗しました: {err}")
-            exit(1)
+            print(f"⚠️ 通常のJSONパース失敗、部分抽出を試みます: {err}")
+            # マッチした配列ブロックを個別にパース
+            matches = re.findall(r'\[\s*\{.*?\}\s*\]', raw_auths_env, re.DOTALL)
+            for m in matches:
+                try:
+                    item = json.loads(m)
+                    if isinstance(item, list) and len(item) > 0:
+                        account_cookie_lists.append(item)
+                except Exception:
+                    pass
 
     if not account_cookie_lists:
         print("⚠️ 有効なクッキーデータが見つかりません。AUTH_JSONS環境変数を確認してください。")
@@ -236,9 +230,10 @@ def main():
             try:
                 cleaned_cookies = []
                 for cookie in cookie_list:
-                    if "sameSite" not in cookie or cookie["sameSite"] not in ["Strict", "Lax", "None"]:
-                        cookie["sameSite"] = "Lax"
-                    cleaned_cookies.append(cookie)
+                    if isinstance(cookie, dict):
+                        if "sameSite" not in cookie or cookie["sameSite"] not in ["Strict", "Lax", "None"]:
+                            cookie["sameSite"] = "Lax"
+                        cleaned_cookies.append(cookie)
                 
                 storage_state_data = {
                     "cookies": cleaned_cookies,

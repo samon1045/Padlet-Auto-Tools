@@ -32,12 +32,12 @@ def send_discord_notification(board_url, account_index):
         req = urllib.request.Request(
             DISCORD_WEBHOOK_URL,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
         )
         with urllib.request.urlopen(req) as res:
             pass
     except Exception as err:
-        print(f"❌ Discord通知エラー: {err}")
+        print(f"⚠️ Discord通知スキップ/エラー: {err}")
 
 def main():
     if not TARGET_BOARD_URL:
@@ -103,7 +103,7 @@ def main():
             try:
                 print("ボードにアクセス中...")
                 page.goto(TARGET_BOARD_URL, wait_until="domcontentloaded")
-                time.sleep(5)
+                time.sleep(6)
 
                 if "login" in page.url or "verify" in page.url:
                     raise Exception("ログインセッションが無効です。")
@@ -113,8 +113,8 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
-                    # 1. 各セクションの「＋」ボタンをクリック
-                    clicked_count = page.evaluate("""() => {
+                    # セクションの「＋」ボタンの位置をJavaScriptで取得して1つずつ確実にクリックして投稿
+                    section_count = page.evaluate("""() => {
                         const buttons = Array.from(document.querySelectorAll('button, [role="button"], div'));
                         let count = 0;
                         for (let i = 0; i < buttons.length; i++) {
@@ -124,6 +124,7 @@ def main():
                             if ((text === '+' || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && count < 6) {
                                 const rect = el.getBoundingClientRect();
                                 if (rect.y > 0 && rect.y < 300 && rect.width > 0) {
+                                    // 個別にクリックしやすくするため座標を控えるか直接クリック
                                     el.click();
                                     count++;
                                 }
@@ -131,42 +132,53 @@ def main():
                         }
                         return count;
                     }""")
-                    print(f"📝 検出・クリックしたセクションボタン数: {clicked_count}")
+                    print(f"📝 検出したセクション数: {section_count}")
                     time.sleep(2.0)
 
-                    # 投稿の入力と送信
-                    try:
-                        title_input = page.query_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]')
-                        if title_input:
-                            title_input.fill(TOPIC_TITLE)
-                            time.sleep(0.5)
-                            
+                    # 各セクションに対して順次フォームが開くので、入力と送信を確実に実行
+                    for sec_idx in range(section_count):
+                        print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
+                        try:
+                            # 1. タイトル入力欄を待機して入力
+                            title_input = page.wait_for_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', timeout=3000)
+                            if title_input:
+                                title_input.click()
+                                title_input.fill(TOPIC_TITLE)
+                                time.sleep(0.5)
+
+                            # 2. 本文エディタに入力
                             body_editor = page.query_selector('div[contenteditable="true"], textarea')
                             if body_editor:
+                                body_editor.click()
                                 body_editor.fill(TOPIC_MESSAGE)
                                 time.sleep(0.5)
 
+                            # 3. 画像添付（存在する場合）
                             if os.path.exists(IMAGE_PATH):
                                 file_inputs = page.query_selector_all('input[type="file"]')
                                 if file_inputs:
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
-                                    time.sleep(2.0)
+                                    time.sleep(1.5)
 
-                            pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish")')
+                            # 4. 「公開」ボタンまたは送信
+                            pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"]')
                             if pub_btn:
-                                pub_btn.click()
+                                pub_btn.click(force=True)
                             else:
                                 page.keyboard.press("Control+Enter")
-                            print("🚀 投稿を送信しました！")
-                    except Exception as e:
-                        print(f"⚠️ 投稿入力スキップ: {e}")
+                            
+                            print(f"🚀 セクション {sec_idx + 1} の投稿を送信しました！")
+                            time.sleep(2.5)
+                        except Exception as e:
+                            print(f"⚠️ セクション {sec_idx + 1} の投稿入力スキップ/エラー: {e}")
+                            # フォームが開いていたらEscで閉じる
+                            page.keyboard.press("Escape")
+                            time.sleep(1.0)
 
-                    time.sleep(3.0)
-
-                    # 2. コメント巡回
+                    # コメント巡回処理
                     print("⚡ コメント巡回を実行中...")
-                    for _ in range(20):
-                        success_comment = page.evaluate("""() => {
+                    for comment_idx in range(30):
+                        clicked_comment = page.evaluate("""() => {
                             const cBtns = Array.from(document.querySelectorAll('button, [role="button"], span, div'));
                             for (let i = 0; i < cBtns.length; i++) {
                                 const btn = cBtns[i];
@@ -179,19 +191,31 @@ def main():
                             }
                             return false;
                         }""")
-                        if not success_comment:
+                        
+                        if not clicked_comment:
+                            print("✨ すべてのコメント対象を巡回し終えました。")
                             break
                         
-                        time.sleep(1.0)
-                        page.keyboard.insert_text(COMMENT_MESSAGE)
-                        time.sleep(0.5)
-                        page.keyboard.press("Enter")
-                        time.sleep(2.0)
-                        print("✅ コメント1件送信完了")
+                        time.sleep(1.2)
+                        try:
+                            editor = page.query_selector('div[contenteditable="true"], textarea')
+                            if editor:
+                                editor.click()
+                                editor.fill(COMMENT_MESSAGE)
+                                time.sleep(0.5)
+                                page.keyboard.press("Enter")
+                                time.sleep(2.5)
+                                print(f"✅ コメント送信完了 ({comment_idx + 1}件目)")
+                            else:
+                                page.keyboard.press("Escape")
+                        except Exception as ce:
+                            print(f"⚠️ コメント入力エラー: {ce}")
+                            page.keyboard.press("Escape")
 
                     if round_num < TOTAL_ROUNDS:
+                        print("🔄 次のラウンドへ向けてボードを再読み込みします...")
                         page.reload(wait_until="domcontentloaded")
-                        time.sleep(4)
+                        time.sleep(5)
 
                 success = True
                 browser.close()

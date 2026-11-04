@@ -1,48 +1,19 @@
-name: Padlet Playwright Bot
-
-on:
-  workflow_dispatch:
-    inputs:
-      target_url:
-        description: 'アクセス先のURL'
-        required: true
-        type: string
-      message:
-        description: '送信するメッセージ'
-        required: false
-        default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
-        type: string
-
-jobs:
-  run-automation:
-    runs-on: ubuntu-latest
-    steps:
-      - name: ソースコードの取得
-        uses: actions/checkout@v4
-
-      - name: Node.jsのセットアップ
-        uses: actions/setup-node@v4
+- name: Pythonのセットアップ
+        uses: actions/setup-python@v5
         with:
-          node-version: 20
+          python-version: '3.11'
 
       - name: 依存関係のインストール
-        run: npm install
-
-      - name: Playwrightブラウザのインストール
-        run: npx playwright install --with-deps chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium
 
       - name: ボットの実行
-        run: node bot.js
+        run: python bot.py
         env:
           AUTH_JSONS: ${{ secrets.AUTH_JSONS }}
           TARGET_URL: ${{ inputs.target_url }}
-          TOPIC_MESSAGE: ${{ inputs.message }}
-          COMMENT_MESSAGE: ${{ inputs.message }}
+          CUSTOM_MESSAGE: ${{ inputs.message }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-
-      - name: スクリーンショットの保存（Artifacts）
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: debug-screenshots
-          path: screenshot-*.png
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -113,8 +113,8 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
-                    # セクションの「＋」ボタンの位置をJavaScriptで取得して1つずつ確実にクリックして投稿
-                    section_count = page.evaluate("""() => {
+                    # セクション数を先に取得
+                    total_sections = page.evaluate("""() => {
                         const buttons = Array.from(document.querySelectorAll('button, [role="button"], div'));
                         let count = 0;
                         for (let i = 0; i < buttons.length; i++) {
@@ -124,34 +124,59 @@ def main():
                             if ((text === '+' || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && count < 6) {
                                 const rect = el.getBoundingClientRect();
                                 if (rect.y > 0 && rect.y < 300 && rect.width > 0) {
-                                    // 個別にクリックしやすくするため座標を控えるか直接クリック
-                                    el.click();
                                     count++;
                                 }
                             }
                         }
                         return count;
                     }""")
-                    print(f"📝 検出したセクション数: {section_count}")
-                    time.sleep(2.0)
+                    print(f"📝 検出したセクション数: {total_sections}")
 
-                    # 各セクションに対して順次フォームが開くので、入力と送信を確実に実行
-                    for sec_idx in range(section_count):
+                    # 💡 各セクションを「1つずつ順番に」クリックして投稿していく
+                    for sec_idx in range(total_sections):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
-                            # 1. タイトル入力欄を待機して入力
-                            title_input = page.wait_for_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', timeout=3000)
+                            # 毎回ボタンを再取得して、上から順番に1つだけクリックする
+                            clicked = page.evaluate("""(targetIndex) => {
+                                const buttons = Array.from(document.querySelectorAll('button, [role="button"], div'));
+                                let count = 0;
+                                for (let i = 0; i < buttons.length; i++) {
+                                    const el = buttons[i];
+                                    const text = (el.innerText || '').trim();
+                                    const aria = el.getAttribute('aria-label') || '';
+                                    if ((text === '+' || aria.includes('Add') || aria.includes('追加') || el.className.includes('add'))) {
+                                        const rect = el.getBoundingClientRect();
+                                        if (rect.y > 0 && rect.y < 300 && rect.width > 0) {
+                                            if (count === targetIndex) {
+                                                el.click();
+                                                return true;
+                                            }
+                                            count++;
+                                        }
+                                    }
+                                }
+                                return false;
+                            }""", sec_idx)
+
+                            if not clicked:
+                                print(f"⚠️ セクション {sec_idx + 1} のボタンが見つかりませんでした。")
+                                continue
+
+                            time.sleep(1.5)
+
+                            # 1. タイトル入力欄を待機
+                            title_input = page.wait_for_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', timeout=4000)
                             if title_input:
                                 title_input.click()
                                 title_input.fill(TOPIC_TITLE)
-                                time.sleep(0.5)
+                                time.sleep(0.4)
 
                             # 2. 本文エディタに入力
                             body_editor = page.query_selector('div[contenteditable="true"], textarea')
                             if body_editor:
                                 body_editor.click()
                                 body_editor.fill(TOPIC_MESSAGE)
-                                time.sleep(0.5)
+                                time.sleep(0.4)
 
                             # 3. 画像添付（存在する場合）
                             if os.path.exists(IMAGE_PATH):
@@ -171,7 +196,6 @@ def main():
                             time.sleep(2.5)
                         except Exception as e:
                             print(f"⚠️ セクション {sec_idx + 1} の投稿入力スキップ/エラー: {e}")
-                            # フォームが開いていたらEscで閉じる
                             page.keyboard.press("Escape")
                             time.sleep(1.0)
 

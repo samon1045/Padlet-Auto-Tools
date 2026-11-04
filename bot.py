@@ -133,7 +133,7 @@ def main():
                     for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
-                            # 1. 該当するセクションのプラスボタンをクリック
+                            # 1. プラスボタンをクリック
                             clicked = page.evaluate("""(targetIndex) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -159,28 +159,22 @@ def main():
 
                             time.sleep(2.0)
 
-                            # 2. タイトル入力欄を待機
-                            title_input = page.wait_for_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', timeout=4000)
-                            if title_input:
-                                title_input.click()
-                                title_input.fill(TOPIC_TITLE)
-                                time.sleep(0.5)
+                            # 2. 💡 修正: エディタまたは入力欄が出現するのを柔軟に待機して直接入力
+                            page.keyboard.insert_text(TOPIC_TITLE)
+                            time.sleep(0.5)
+                            page.keyboard.press("Tab")
+                            time.sleep(0.3)
+                            page.keyboard.insert_text(TOPIC_MESSAGE)
+                            time.sleep(0.5)
 
-                            # 3. 本文エディタに入力
-                            body_editor = page.query_selector('div[contenteditable="true"], textarea')
-                            if body_editor:
-                                body_editor.click()
-                                body_editor.fill(TOPIC_MESSAGE)
-                                time.sleep(0.5)
-
-                            # 4. 画像添付（存在する場合）
+                            # 3. 画像添付（存在する場合）
                             if os.path.exists(IMAGE_PATH):
                                 file_inputs = page.query_selector_all('input[type="file"]')
                                 if file_inputs:
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
                                     time.sleep(2.0)
 
-                            # 5. 💡 【強化】「公開」ボタンを確実にクリックして確定させる
+                            # 4. 「公開」ボタンまたは送信確定
                             published = False
                             for _ in range(3):
                                 pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]')
@@ -194,13 +188,12 @@ def main():
                                 time.sleep(0.5)
 
                             if not published:
-                                # ボタンが見つからない場合はショートカットで強制送信
                                 page.keyboard.press("Control+Enter")
                                 time.sleep(0.5)
                                 page.keyboard.press("Enter")
 
                             print(f"🚀 セクション {sec_idx + 1} の投稿を送信しました！")
-                            time.sleep(3.5) # サーバー反映を待つウェイト
+                            time.sleep(3.0)
                         except Exception as e:
                             print(f"⚠️ セクション {sec_idx + 1} の投稿入力エラー: {e}")
                             page.keyboard.press("Escape")

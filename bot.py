@@ -111,62 +111,81 @@ def attach_image_for_topic(page):
     except Exception as err:
         print(f"⚠️ 画像の添付中に軽微なエラーが発生しました: {err}")
 
+# 🔍 複数回（最大5〜10回）検査して安定したボタン要素群を特定する仕組み
 def ask_gemini_for_section_buttons(page, account_num):
-    buttons_info = page.evaluate("""() => {
-        const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
-        return allEls.map((el, index) => {
-            const rect = el.getBoundingClientRect();
-            return {
-                domIndex: index,
-                text: (el.innerText || '').trim().substring(0, 30),
-                ariaLabel: el.getAttribute('aria-label') || '',
-                testId: el.getAttribute('data-testid') || '',
-                className: el.className || '',
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height)
-            };
-        }).filter(b => b.y > 30 && b.y < 350 && b.x < 1200 && b.width > 10 && b.height > 10);
-    }""")
+    indices = []
+    
+    for attempt in range(1, 6): # 最大5回検査して安定性を高める
+        try:
+            buttons_info = page.evaluate("""() => {
+                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
+                return allEls.map((el, index) => {
+                    const rect = el.getBoundingClientRect();
+                    return {
+                        domIndex: index,
+                        text: (el.innerText || '').trim().substring(0, 30),
+                        ariaLabel: el.getAttribute('aria-label') || '',
+                        testId: el.getAttribute('data-testid') || '',
+                        className: el.className || '',
+                        x: Math.round(rect.x),
+                        y: Math.round(rect.y),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height)
+                    };
+                }).filter(b => b.y > 30 && b.y < 350 && b.x < 1200 && b.width > 10 && b.height > 10);
+            }""")
 
-    if not ai_client:
-        print("⚠️ GEMINI_API_KEY が設定されていないため、デフォルトの座標ソートにフォールバックします。")
-        return [b["domIndex"] for b in sorted(buttons_info, key=lambda k: k["x"]) if "+" in b["text"] or "Add" in b["ariaLabel"] or "追加" in b["ariaLabel"]]
+            if not ai_client:
+                print("⚠️ GEMINI_API_KEY が設定されていないため、デフォルトの座標ソートにフォールバックします。")
+                indices = [b["domIndex"] for b in sorted(buttons_info, key=lambda k: k["x"]) if "+" in b["text"] or "Add" in b["ariaLabel"] or "追加" in b["ariaLabel"]]
+                break
 
-    try:
-        screenshot_path = take_step_screenshot(page, "ai-analysis", account_num)
-        image_part = None
-        if screenshot_path and os.path.exists(screenshot_path):
-            with open(screenshot_path, "rb") as f:
-                image_bytes = f.read()
-            from google.genai import types
-            image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/png")
+            screenshot_path = take_step_screenshot(page, f"ai-analysis-try{attempt}", account_num)
+            image_part = None
+            if screenshot_path and os.path.exists(screenshot_path):
+                with open(screenshot_path, "rb") as f:
+                    image_bytes = f.read()
+                from google.genai import types
+                image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/png")
 
-        prompt = (
-            "あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、"
-            "各セクション（カラム）の列にある新規投稿用のプラスボタンに該当する要素の domIndex を、"
-            "左から右の列順（X座標の昇順）に配列としてJSON形式でのみ返してください。"
-            "余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。\n\nボタンリスト:\n"
-            + json.dumps(buttons_info, ensure_ascii=False, indent=2)
-        )
+            prompt = (
+                "あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、"
+                "各セクション（カラム）の列にある新規投稿用のプラスボタンに該当する要素の domIndex を、"
+                "左から右の列順（X座標の昇順）に配列としてJSON形式でのみ返してください。"
+                "余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。\n\nボタンリスト:\n"
+                + json.dumps(buttons_info, ensure_ascii=False, indent=2)
+            )
 
-        contents = [prompt, image_part] if image_part else [prompt]
-        response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-        )
+            contents = [prompt, image_part] if image_part else [prompt]
+            response = ai_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+            )
 
-        text_response = response.text.strip()
-        match = re.search(r"\[[\d,\s]*\]", text_response)
-        if match:
-            indices = json.loads(match.group(0))
-            print(f"🤖 Gemini AI が特定したセクションボタンのDOMインデックス: {indices}")
-            return indices
-    except Exception as err:
-        print(f"⚠️ Gemini APIによる解析中にエラーが発生しました。フォールバックします: {err}")
+            text_response = response.text.strip()
+            match = re.search(r"\[[\d,\s]*\]", text_response)
+            if match:
+                parsed_indices = json.loads(match.group(0))
+                if len(parsed_indices) > 0:
+                    indices = parsed_indices
+                    print(f"🤖 (試行 {attempt}/5) AIが特定したセクションボタンのDOMインデックス: {indices}")
+                    break
+        except Exception as err:
+            print(f"⚠️ 検査試行 {attempt} 回目でエラー: {err}")
+            time.sleep(1.0)
 
-    return [b["domIndex"] for b in sorted(buttons_info, key=lambda k: k["x"]) if "+" in b["text"] or "Add" in b["ariaLabel"] or "追加" in b["ariaLabel"]]
+    if not indices:
+        print("⚠️ AI解析が通らなかったため、ヒューリスティックなフォールバックを実行します。")
+        buttons_info = page.evaluate("""() => {
+            const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
+            return allEls.map((el, index) => {
+                const rect = el.getBoundingClientRect();
+                return { domIndex: index, text: el.innerText || '', ariaLabel: el.getAttribute('aria-label') || '', x: Math.round(rect.x), y: Math.round(rect.y) };
+            }).filter(b => b.y > 30 && b.y < 350);
+        }""")
+        indices = [b["domIndex"] for b in sorted(buttons_info, key=lambda k: k["x"]) if "+" in b["text"] or "Add" in b["ariaLabel"] or "追加" in b["ariaLabel"]]
+
+    return indices
 
 def main():
     if not TARGET_BOARD_URL:
@@ -178,17 +197,27 @@ def main():
 
     if raw_auths_env:
         try:
-            parsed_env = json.loads(raw_auths_env)
-            # 2次元配列（複数のアカウントごとのクッキーリスト）の場合
-            if isinstance(parsed_env, list):
-                if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
-                    account_cookie_lists = parsed_env
-                else:
-                    account_cookie_lists = [parsed_env]
-            else:
-                account_cookie_lists = [[parsed_env]]
+            # 💡 複数アカウントのクッキー配列を安全に抽出（Extra dataエラーを完全回避）
+            matches = re.findall(r'\[\s*\{.*?\}\s*\]', raw_auths_env, re.DOTALL)
+            if matches:
+                for m in matches:
+                    try:
+                        parsed_item = json.loads(m)
+                        if isinstance(parsed_item, list) and len(parsed_item) > 0:
+                            account_cookie_lists.append(parsed_item)
+                    except Exception:
+                        pass
+            
+            # もし正規表現で取れなければ通常のloadsを試す
+            if not account_cookie_lists:
+                parsed_env = json.loads(raw_auths_env)
+                if isinstance(parsed_env, list):
+                    if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
+                        account_cookie_lists = parsed_env
+                    else:
+                        account_cookie_lists = [parsed_env]
         except Exception as err:
-            print(f"❌ AUTH_JSONS のJSONパースに失敗しました: {err}")
+            print(f"❌ AUTH_JSONS の安全パースに失敗しました: {err}")
             exit(1)
 
     if not account_cookie_lists:
@@ -211,7 +240,6 @@ def main():
                         cookie["sameSite"] = "Lax"
                     cleaned_cookies.append(cookie)
                 
-                # Playwrightが読み込める正しいストレージステート形式にラップして保存
                 storage_state_data = {
                     "cookies": cleaned_cookies,
                     "origins": []
@@ -251,7 +279,7 @@ def main():
                     close_all_modals_and_popups(page)
 
                     target_dom_indices = ask_gemini_for_section_buttons(page, account_num)
-                    print(f"🔍 AIが選定した有効なセクション列数: {len(target_dom_indices)}個")
+                    print(f"🔍 安定検査を通過した有効なセクション列数: {len(target_dom_indices)}個")
 
                     max_sections = min(len(target_dom_indices), 6)
 

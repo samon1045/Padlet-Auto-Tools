@@ -174,57 +174,50 @@ def main():
         exit(1)
 
     raw_auths_env = os.getenv("AUTH_JSONS", os.getenv("AUTH_JSON", ""))
-    auth_list = []
+    account_cookie_lists = []
 
     if raw_auths_env:
         try:
             parsed_env = json.loads(raw_auths_env)
+            # 2次元配列（複数のアカウントごとのクッキーリスト）の場合
             if isinstance(parsed_env, list):
-                # 配列の中にさらに配列やオブジェクトが入っている場合を考慮
                 if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
-                    auth_list = [json.dumps(item) for item in parsed_env]
+                    account_cookie_lists = parsed_env
                 else:
-                    auth_list = [raw_auths_env]
+                    account_cookie_lists = [parsed_env]
             else:
-                auth_list = [raw_auths_env]
-        except Exception:
-            # JSONとして直接パースできない場合はブロックごとに分割を試みる
-            current_block = ""
-            bracket_count = 0
-            for char in raw_auths_env:
-                if char == "[":
-                    bracket_count += 1
-                if bracket_count > 0:
-                    current_block += char
-                if char == "]":
-                    bracket_count -= 1
-                    if bracket_count == 0 and len(current_block.strip()) > 0:
-                        auth_list.append(current_block.strip())
-                        current_block = ""
+                account_cookie_lists = [[parsed_env]]
+        except Exception as err:
+            print(f"❌ AUTH_JSONS のJSONパースに失敗しました: {err}")
+            exit(1)
 
-    if not auth_list:
+    if not account_cookie_lists:
         print("⚠️ 有効なクッキーデータが見つかりません。AUTH_JSONS環境変数を確認してください。")
         exit(1)
 
     success = False
 
     with sync_playwright() as p:
-        for index, auth_data in enumerate(auth_list):
+        for index, cookie_list in enumerate(account_cookie_lists):
             auth_file = f"auth-{index}.json"
             account_num = index + 1
 
             print(f"\n🔑 アカウント #{account_num} のクッキーデータでログインを試行します...")
 
             try:
-                parsed_cookies = json.loads(auth_data)
                 cleaned_cookies = []
-                for cookie in parsed_cookies:
+                for cookie in cookie_list:
                     if "sameSite" not in cookie or cookie["sameSite"] not in ["Strict", "Lax", "None"]:
                         cookie["sameSite"] = "Lax"
                     cleaned_cookies.append(cookie)
                 
+                # Playwrightが読み込める正しいストレージステート形式にラップして保存
+                storage_state_data = {
+                    "cookies": cleaned_cookies,
+                    "origins": []
+                }
                 with open(auth_file, "w", encoding="utf-8") as f:
-                    json.dump({"cookies": cleaned_cookies, "origins": []}, f, indent=2)
+                    json.dump(storage_state_data, f, indent=2)
             except Exception as err:
                 print(f"❌ アカウント #{account_num} のクッキー処理に失敗しました: {err}")
                 continue

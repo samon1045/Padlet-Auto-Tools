@@ -1,10 +1,14 @@
 import os
 import json
 import time
+import sys
 import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from google import genai
+
+# 💡 ログのバッファリングを無効化し、GitHub Actions上に即座に出力されるようにする
+sys.stdout.reconfigure(line_buffering=True)
 
 # 📝 設定値
 TOPIC_TITLE = os.getenv("TOPIC_TITLE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳"))
@@ -114,10 +118,10 @@ def attach_image_for_topic(page):
 def ask_gemini_for_section_buttons(page, account_num):
     indices = []
     
-    for attempt in range(1, 6):
+    for attempt in range(1, 4):
         try:
             buttons_info = page.evaluate("""() => {
-                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
+                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"], [aria-label*="Add"], [aria-label*="追加"]'));
                 return allEls.map((el, index) => {
                     const rect = el.getBoundingClientRect();
                     return {
@@ -131,12 +135,13 @@ def ask_gemini_for_section_buttons(page, account_num):
                         width: Math.round(rect.width),
                         height: Math.round(rect.height)
                     };
-                }).filter(b => b.y > 30 && b.y < 350 && b.x < 1200 && b.width > 10 && b.height > 10);
+                }).filter(b => b.y > 20 && b.y < 400 && b.width > 5 && b.height > 5);
             }""")
 
+            print(f"🔍 画面内の検出ボタン候補数: {len(buttons_info)} 個")
+
             if not ai_client:
-                print("⚠️ GEMINI_API_KEY が設定されていないため、デフォルトの座標ソートにフォールバックします。")
-                indices = [b["domIndex"] for b in sorted(buttons_info, key=lambda k: k["x"]) if "+" in b["text"] or "Add" in b["ariaLabel"] or "追加" in b["ariaLabel"]]
+                print("⚠️ GEMINI_API_KEY が設定されていないため、座標ベースでセクションボタンを抽出します。")
                 break
 
             screenshot_path = take_step_screenshot(page, f"ai-analysis-try{attempt}", account_num)
@@ -149,7 +154,7 @@ def ask_gemini_for_section_buttons(page, account_num):
 
             prompt = (
                 "あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、"
-                "各セクション（カラム）の列にある新規投稿用のプラスボタンに該当する要素の domIndex を、"
+                "各セクション（カラム）の列にある新規投稿用のプラスボタン（またはセクションの投稿ボタン）に該当する要素の domIndex を、"
                 "左から右の列順（X座標の昇順）に配列としてJSON形式でのみ返してください。"
                 "余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。\n\nボタンリスト:\n"
                 + json.dumps(buttons_info, ensure_ascii=False, indent=2)
@@ -167,21 +172,40 @@ def ask_gemini_for_section_buttons(page, account_num):
                 parsed_indices = json.loads(match.group(0))
                 if len(parsed_indices) > 0:
                     indices = parsed_indices
-                    print(f"🤖 (試行 {attempt}/5) AIが特定したセクションボタンのDOMインデックス: {indices}")
+                    print(f"🤖 (試行 {attempt}) AIが特定したセクションボタンのDOMインデックス: {indices}")
                     break
         except Exception as err:
             print(f"⚠️ 検査試行 {attempt} 回目でエラー: {err}")
             time.sleep(1.0)
 
+    # 万が一AIやパースでインデックスが取れなかった場合の強力なフォールバック
     if not indices:
-        buttons_info = page.evaluate("""() => {
-            const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
-            return allEls.map((el, index) => {
+        print("⚠️ AI解析が取得できなかったため、座標ソートによる自動フォールバックを実行します。")
+        fallback_indices = page.evaluate("""() => {
+            const allEls = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
+            let valid = [];
+            allEls.forEach((el, index) => {
                 const rect = el.getBoundingClientRect();
-                return { domIndex: index, text: el.innerText || '', ariaLabel: el.getAttribute('aria-label') || '', x: Math.round(rect.x), y: Math.round(rect.y) };
-            }).filter(b => b.y > 30 && b.y < 350);
+                const text = (el.innerText || '').trim();
+                const aria = el.getAttribute('aria-label') || '';
+                if ((text.includes('+') || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && rect.y > 30 && rect.y < 350 && rect.width > 10) {
+                    valid.push({ domIndex: index, x: Math.round(rect.x) });
+                }
+            });
+            // X座標でソートして重複を排除
+            valid.sort((a, b) => a.x - b.x);
+            let unique = [];
+            let lastX = -999;
+            valid.forEach(item => {
+                if (Math.abs(item.x - lastX) > 30) {
+                    unique.push(item.domIndex);
+                    lastX = item.x;
+                }
+            });
+            return unique;
         }""")
-        indices = [b["domIndex"] for b in sorted(buttons_info, key=lambda k: k["x"]) if "+" in b["text"] or "Add" in b["ariaLabel"] or "追加" in b["ariaLabel"]]
+        indices = fallback_indices
+        print(f"🔍 フォールバックで特定したセクションボタンのインデックス: {indices}")
 
     return indices
 
@@ -256,7 +280,6 @@ def main():
 
                 take_step_screenshot(page, "after-goto", account_num)
 
-                # 💡 修正点: page.url はプロパティのため、カッコ () を外しました
                 current_url = page.url
                 if "login" in current_url or "verify" in current_url or page.query_selector("text=registered users only"):
                     raise Exception("クッキーの有効期限が切れているか、ログインしていません。")
@@ -272,9 +295,12 @@ def main():
                     close_all_modals_and_popups(page)
 
                     target_dom_indices = ask_gemini_for_section_buttons(page, account_num)
-                    print(f"🔍 安定検査を通過した有効なセクション列数: {len(target_dom_indices)}個")
+                    print(f"🔍 投稿対象となるセクション列数: {len(target_dom_indices)}個")
 
                     max_sections = min(len(target_dom_indices), 6)
+
+                    if max_sections == 0:
+                        print("⚠️ 新規投稿用のプラスボタンが検出されませんでした。ページ構造を確認してください。")
 
                     for i in range(max_sections):
                         try:
@@ -284,7 +310,7 @@ def main():
                             dom_index_to_click = target_dom_indices[i]
 
                             clicked = page.evaluate("""(targetIdx) => {
-                                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
+                                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"], [aria-label*="Add"], [aria-label*="追加"]'));
                                 const target = allEls[targetIdx];
                                 if (target) {
                                     target.scrollIntoView({ behavior: 'smooth', block: 'center' });

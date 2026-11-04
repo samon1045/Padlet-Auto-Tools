@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-# ログのバッファリングを即時出力に設定
 sys.stdout.reconfigure(line_buffering=True)
 
 TOPIC_TITLE = os.getenv("TOPIC_TITLE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳"))
@@ -113,7 +112,6 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
-                    # セクションの数を正確にカウント
                     total_sections = page.evaluate("""() => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
@@ -129,11 +127,9 @@ def main():
                     }""")
                     print(f"📝 検出したセクション数: {total_sections}")
 
-                    # 各セクションに対して確実に投稿フォームを開いて入力・送信
                     for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
-                            # 1. プラスボタンをクリック
                             clicked = page.evaluate("""(targetIndex) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -159,7 +155,6 @@ def main():
 
                             time.sleep(2.0)
 
-                            # 2. 💡 修正: エディタまたは入力欄が出現するのを柔軟に待機して直接入力
                             page.keyboard.insert_text(TOPIC_TITLE)
                             time.sleep(0.5)
                             page.keyboard.press("Tab")
@@ -167,14 +162,12 @@ def main():
                             page.keyboard.insert_text(TOPIC_MESSAGE)
                             time.sleep(0.5)
 
-                            # 3. 画像添付（存在する場合）
                             if os.path.exists(IMAGE_PATH):
                                 file_inputs = page.query_selector_all('input[type="file"]')
                                 if file_inputs:
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
                                     time.sleep(2.0)
 
-                            # 4. 「公開」ボタンまたは送信確定
                             published = False
                             for _ in range(3):
                                 pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]')
@@ -199,7 +192,6 @@ def main():
                             page.keyboard.press("Escape")
                             time.sleep(1.0)
 
-                    # コメント巡回処理
                     print("⚡ コメント巡回を実行中...")
                     for comment_idx in range(30):
                         clicked_comment = page.evaluate("""() => {

@@ -17,7 +17,7 @@ try:
 except ValueError:
     TOTAL_ROUNDS = 2
 
-IMAGE_PATH = os.path.join(os.path.dirname(__file__), "a62e0a5b (1).gif")
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), "_______.gif")
 TARGET_BOARD_URL = os.getenv("TARGET_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 

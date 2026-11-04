@@ -93,7 +93,6 @@ def main():
                 print(f"❌ クッキー設定エラー: {err}")
                 continue
 
-            # 完全なヘッドレスモード（画面なし・高速動作）
             browser = p.chromium.launch(
                 headless=True,
                 args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
@@ -114,12 +113,12 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
-                    # 1. 各セクションの「＋」ボタンをJavaScriptで直接一網打尽にして順次クリック
+                    # 1. 各セクションの「＋」ボタンをクリック
                     clicked_count = page.evaluate("""() => {
-                        // Padletのセクション追加ボタンやカラム内プラスボタンを幅広くセレクタで取得
                         const buttons = Array.from(document.querySelectorAll('button, [role="button"], div'));
                         let count = 0;
-                        buttons.forEach(el => {
+                        for (let i = 0; i < buttons.length; i++) {
+                            const el = buttons[i];
                             const text = (el.innerText || '').trim();
                             const aria = el.getAttribute('aria-label') || '';
                             if ((text === '+' || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && count < 6) {
@@ -129,13 +128,13 @@ def main():
                                     count++;
                                 }
                             }
-                        });
+                        }
                         return count;
-                    """)
+                    }""")
                     print(f"📝 検出・クリックしたセクションボタン数: {clicked_count}")
                     time.sleep(2.0)
 
-                    # フォームが開いている前提でタイトルとメッセージを入力して送信
+                    # 投稿の入力と送信
                     try:
                         title_input = page.query_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]')
                         if title_input:
@@ -147,14 +146,12 @@ def main():
                                 body_editor.fill(TOPIC_MESSAGE)
                                 time.sleep(0.5)
 
-                            # 画像がある場合はファイルインプットに直接流し込む
                             if os.path.exists(IMAGE_PATH):
                                 file_inputs = page.query_selector_all('input[type="file"]')
                                 if file_inputs:
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
                                     time.sleep(2.0)
 
-                            # 送信（公開ボタン、またはCtrl+Enter）
                             pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish")')
                             if pub_btn:
                                 pub_btn.click()
@@ -166,12 +163,13 @@ def main():
 
                     time.sleep(3.0)
 
-                    # 2. コメント巡回（画面を描画せずDOMから直接コメントボタンを叩く）
+                    # 2. コメント巡回
                     print("⚡ コメント巡回を実行中...")
                     for _ in range(20):
                         success_comment = page.evaluate("""() => {
                             const cBtns = Array.from(document.querySelectorAll('button, [role="button"], span, div'));
-                            for (let btn of cBtns) {
+                            for (let i = 0; i < cBtns.length; i++) {
+                                const btn = cBtns[i];
                                 const t = (btn.innerText || '').trim();
                                 const a = btn.getAttribute('aria-label') || '';
                                 if (t.includes('Add comment') || t.includes('コメントを追加') || a.includes('comment')) {
@@ -180,12 +178,11 @@ def main():
                                 }
                             }
                             return false;
-                        })""")
+                        }""")
                         if not success_comment:
                             break
                         
                         time.sleep(1.0)
-                        # コメント入力
                         page.keyboard.insert_text(COMMENT_MESSAGE)
                         time.sleep(0.5)
                         page.keyboard.press("Enter")

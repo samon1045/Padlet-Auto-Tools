@@ -195,7 +195,6 @@ def main():
 
     if raw_auths_env:
         try:
-            # 💡 安全かつ厳密な2次元配列の抽出
             parsed_env = json.loads(raw_auths_env)
             if isinstance(parsed_env, list):
                 if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
@@ -203,8 +202,6 @@ def main():
                 else:
                     account_cookie_lists = [parsed_env]
         except Exception as err:
-            print(f"⚠️ 通常のJSONパース失敗、部分抽出を試みます: {err}")
-            # マッチした配列ブロックを個別にパース
             matches = re.findall(r'\[\s*\{.*?\}\s*\]', raw_auths_env, re.DOTALL)
             for m in matches:
                 try:
@@ -259,7 +256,8 @@ def main():
 
                 take_step_screenshot(page, "after-goto", account_num)
 
-                current_url = page.url()
+                # 💡 修正点: page.url はプロパティのため、カッコ () を外しました
+                current_url = page.url
                 if "login" in current_url or "verify" in current_url or page.query_selector("text=registered users only"):
                     raise Exception("クッキーの有効期限が切れているか、ログインしていません。")
 

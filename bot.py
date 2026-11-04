@@ -133,7 +133,7 @@ def main():
                     for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
-                            # 1. 該当するセクションのプラスボタンをJavaScript経由で確実にクリック
+                            # 1. 該当するセクションのプラスボタンをクリック
                             clicked = page.evaluate("""(targetIndex) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -159,24 +159,12 @@ def main():
 
                             time.sleep(2.0)
 
-                            # 2. タイトル入力欄が表示されるのを待つ（複数のセレクタ候補に対応）
-                            title_input = None
-                            for sel in ['input[placeholder*="件名"]', 'input[placeholder*="Title"]', 'input[placeholder*="タイトル"]', 'input[type="text"]', 'textarea']:
-                                try:
-                                    title_input = page.wait_for_selector(sel, timeout=3000)
-                                    if title_input and title_input.is_visible():
-                                        break
-                                except Exception:
-                                    pass
-
-                            if not title_input:
-                                print(f"⚠️ [セクション {sec_idx + 1}] 投稿フォームが正常に開かなかったためスキップします。")
-                                page.keyboard.press("Escape")
-                                continue
-
-                            title_input.click()
-                            title_input.fill(TOPIC_TITLE)
-                            time.sleep(0.5)
+                            # 2. タイトル入力欄を待機
+                            title_input = page.wait_for_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', timeout=4000)
+                            if title_input:
+                                title_input.click()
+                                title_input.fill(TOPIC_TITLE)
+                                time.sleep(0.5)
 
                             # 3. 本文エディタに入力
                             body_editor = page.query_selector('div[contenteditable="true"], textarea')
@@ -192,15 +180,27 @@ def main():
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
                                     time.sleep(2.0)
 
-                            # 5. 「公開」ボタンまたは送信
-                            pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"]')
-                            if pub_btn:
-                                pub_btn.click(force=True)
-                            else:
+                            # 5. 💡 【強化】「公開」ボタンを確実にクリックして確定させる
+                            published = False
+                            for _ in range(3):
+                                pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]')
+                                if pub_btn and pub_btn.is_visible():
+                                    try:
+                                        pub_btn.click(force=True)
+                                        published = True
+                                        break
+                                    except Exception:
+                                        pass
+                                time.sleep(0.5)
+
+                            if not published:
+                                # ボタンが見つからない場合はショートカットで強制送信
                                 page.keyboard.press("Control+Enter")
-                            
+                                time.sleep(0.5)
+                                page.keyboard.press("Enter")
+
                             print(f"🚀 セクション {sec_idx + 1} の投稿を送信しました！")
-                            time.sleep(3.0)
+                            time.sleep(3.5) # サーバー反映を待つウェイト
                         except Exception as e:
                             print(f"⚠️ セクション {sec_idx + 1} の投稿入力エラー: {e}")
                             page.keyboard.press("Escape")

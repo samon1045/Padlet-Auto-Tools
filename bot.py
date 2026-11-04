@@ -113,79 +113,86 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
-                    # セクション数を先に取得
+                    # セクションの数を正確にカウント
                     total_sections = page.evaluate("""() => {
-                        const buttons = Array.from(document.querySelectorAll('button, [role="button"], div'));
+                        const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
-                        for (let i = 0; i < buttons.length; i++) {
-                            const el = buttons[i];
-                            const text = (el.innerText || '').trim();
-                            const aria = el.getAttribute('aria-label') || '';
-                            if ((text === '+' || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && count < 6) {
-                                const rect = el.getBoundingClientRect();
-                                if (rect.y > 0 && rect.y < 300 && rect.width > 0) {
-                                    count++;
-                                }
+                        for (let btn of addBtns) {
+                            const rect = btn.getBoundingClientRect();
+                            const text = (btn.innerText || '').trim();
+                            const aria = btn.getAttribute('aria-label') || '';
+                            if ((text === '+' || aria.includes('Add') || aria.includes('追加') || btn.className.includes('add')) && rect.y > 0 && rect.y < 350 && rect.width > 0) {
+                                count++;
                             }
                         }
                         return count;
                     }""")
                     print(f"📝 検出したセクション数: {total_sections}")
 
-                    # 💡 各セクションを「1つずつ順番に」クリックして投稿していく
-                    for sec_idx in range(total_sections):
+                    # 各セクションに対して確実に投稿フォームを開いて入力・送信
+                    for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
-                            # 毎回ボタンを再取得して、上から順番に1つだけクリックする
+                            # 1. 該当するセクションのプラスボタンをJavaScript経由で確実にクリック
                             clicked = page.evaluate("""(targetIndex) => {
-                                const buttons = Array.from(document.querySelectorAll('button, [role="button"], div'));
+                                const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
-                                for (let i = 0; i < buttons.length; i++) {
-                                    const el = buttons[i];
-                                    const text = (el.innerText || '').trim();
-                                    const aria = el.getAttribute('aria-label') || '';
-                                    if ((text === '+' || aria.includes('Add') || aria.includes('追加') || el.className.includes('add'))) {
-                                        const rect = el.getBoundingClientRect();
-                                        if (rect.y > 0 && rect.y < 300 && rect.width > 0) {
-                                            if (count === targetIndex) {
-                                                el.click();
-                                                return true;
-                                            }
-                                            count++;
+                                for (let btn of addBtns) {
+                                    const rect = btn.getBoundingClientRect();
+                                    const text = (btn.innerText || '').trim();
+                                    const aria = btn.getAttribute('aria-label') || '';
+                                    if ((text === '+' || aria.includes('Add') || aria.includes('追加') || btn.className.includes('add')) && rect.y > 0 && rect.y < 350 && rect.width > 0) {
+                                        if (count === targetIndex) {
+                                            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            btn.click();
+                                            return true;
                                         }
+                                        count++;
                                     }
                                 }
                                 return false;
                             }""", sec_idx)
 
                             if not clicked:
-                                print(f"⚠️ セクション {sec_idx + 1} のボタンが見つかりませんでした。")
+                                print(f"⚠️ セクション {sec_idx + 1} のプラスボタンが見つかりませんでした。")
                                 continue
 
-                            time.sleep(1.5)
+                            time.sleep(2.0)
 
-                            # 1. タイトル入力欄を待機
-                            title_input = page.wait_for_selector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', timeout=4000)
-                            if title_input:
-                                title_input.click()
-                                title_input.fill(TOPIC_TITLE)
-                                time.sleep(0.4)
+                            # 2. タイトル入力欄が表示されるのを待つ（複数のセレクタ候補に対応）
+                            title_input = None
+                            for sel in ['input[placeholder*="件名"]', 'input[placeholder*="Title"]', 'input[placeholder*="タイトル"]', 'input[type="text"]', 'textarea']:
+                                try:
+                                    title_input = page.wait_for_selector(sel, timeout=3000)
+                                    if title_input and title_input.is_visible():
+                                        break
+                                except Exception:
+                                    pass
 
-                            # 2. 本文エディタに入力
+                            if not title_input:
+                                print(f"⚠️ [セクション {sec_idx + 1}] 投稿フォームが正常に開かなかったためスキップします。")
+                                page.keyboard.press("Escape")
+                                continue
+
+                            title_input.click()
+                            title_input.fill(TOPIC_TITLE)
+                            time.sleep(0.5)
+
+                            # 3. 本文エディタに入力
                             body_editor = page.query_selector('div[contenteditable="true"], textarea')
                             if body_editor:
                                 body_editor.click()
                                 body_editor.fill(TOPIC_MESSAGE)
-                                time.sleep(0.4)
+                                time.sleep(0.5)
 
-                            # 3. 画像添付（存在する場合）
+                            # 4. 画像添付（存在する場合）
                             if os.path.exists(IMAGE_PATH):
                                 file_inputs = page.query_selector_all('input[type="file"]')
                                 if file_inputs:
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
-                                    time.sleep(1.5)
+                                    time.sleep(2.0)
 
-                            # 4. 「公開」ボタンまたは送信
+                            # 5. 「公開」ボタンまたは送信
                             pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"]')
                             if pub_btn:
                                 pub_btn.click(force=True)
@@ -193,9 +200,9 @@ def main():
                                 page.keyboard.press("Control+Enter")
                             
                             print(f"🚀 セクション {sec_idx + 1} の投稿を送信しました！")
-                            time.sleep(2.5)
+                            time.sleep(3.0)
                         except Exception as e:
-                            print(f"⚠️ セクション {sec_idx + 1} の投稿入力スキップ/エラー: {e}")
+                            print(f"⚠️ セクション {sec_idx + 1} の投稿入力エラー: {e}")
                             page.keyboard.press("Escape")
                             time.sleep(1.0)
 
@@ -204,8 +211,7 @@ def main():
                     for comment_idx in range(30):
                         clicked_comment = page.evaluate("""() => {
                             const cBtns = Array.from(document.querySelectorAll('button, [role="button"], span, div'));
-                            for (let i = 0; i < cBtns.length; i++) {
-                                const btn = cBtns[i];
+                            for (let btn of cBtns) {
                                 const t = (btn.innerText || '').trim();
                                 const a = btn.getAttribute('aria-label') || '';
                                 if (t.includes('Add comment') || t.includes('コメントを追加') || a.includes('comment')) {

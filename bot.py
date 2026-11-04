@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
+# ログのバッファリングを即時出力に設定
 sys.stdout.reconfigure(line_buffering=True)
 
 TOPIC_TITLE = os.getenv("TOPIC_TITLE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳"))
@@ -12,7 +13,7 @@ TOPIC_MESSAGE = os.getenv("TOPIC_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さー�
 COMMENT_MESSAGE = os.getenv("COMMENT_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 
 try:
-    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "10")))
+    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "2")))
 except ValueError:
     TOTAL_ROUNDS = 2
 
@@ -96,7 +97,15 @@ def main():
                 headless=True,
                 args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
             )
-            context = browser.new_context(storage_state=auth_file)
+            
+            # 💡 【画面録画の有効化】録画保存先を指定してブラウザコンテキストを作成
+            video_dir = "videos"
+            os.makedirs(video_dir, exist_ok=True)
+            context = browser.new_context(
+                storage_state=auth_file,
+                record_video_dir=video_dir,
+                record_video_size={"width": 1280, "height": 720}
+            )
             page = context.new_page()
 
             try:
@@ -112,6 +121,7 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
+                    # セクション数をカウント
                     total_sections = page.evaluate("""() => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
@@ -127,6 +137,7 @@ def main():
                     }""")
                     print(f"📝 検出したセクション数: {total_sections}")
 
+                    # 投稿作成
                     for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
@@ -206,6 +217,7 @@ def main():
                             page.keyboard.press("Escape")
                             time.sleep(1.0)
 
+                    # コメント巡回・送信処理
                     print("⚡ コメント巡回を実行中...")
                     for comment_idx in range(30):
                         clicked_comment = page.evaluate("""() => {
@@ -263,13 +275,21 @@ def main():
                         time.sleep(5)
 
                 success = True
+                
+                # 録画ファイルを確実に保存させるためにコンテキストを閉じる
+                context.close()
                 browser.close()
+                
                 send_discord_notification(TARGET_BOARD_URL, account_num)
                 break
 
             except Exception as error:
                 print(f"❌ アカウント #{account_num} エラー: {error}")
-                browser.close()
+                try:
+                    context.close()
+                    browser.close()
+                except Exception:
+                    pass
 
     if not success:
         print("❌ すべてのアカウントでの実行に失敗しました。")

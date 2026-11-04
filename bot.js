@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { GoogleGenAI } = require('@google/genai');
 const path = require('path');
 const fs = require('fs');
 
@@ -10,6 +11,10 @@ const COMMENT_MESSAGE = process.env.COMMENT_MESSAGE || process.env.CUSTOM_MESSAG
 const IMAGE_PATH = path.join(__dirname, 'a62e0a5b (1).gif'); 
 const TARGET_BOARD_URL = process.env.TARGET_URL;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_APIKEY;
+
+// 🤖 Geminiクライアントの初期化
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 // 🔗 Discordに通知を送る関数
 async function sendDiscordNotification(boardUrl, accountIndex) {
@@ -20,7 +25,7 @@ async function sendDiscordNotification(boardUrl, accountIndex) {
 
     try {
         const payload = {
-            content: `🛡️ **Padletモデレーションボット通知**\nアカウント #${accountIndex} を使用して以下のボードで処理が完了しました！\n🔗 ${boardUrl}`
+            content: `🛡️ **Padletモデレーションボット（AI駆動版）通知**\nアカウント #${accountIndex} を使用して以下のボードで処理が完了しました！\n🔗 ${boardUrl}`
         };
 
         const response = await fetch(DISCORD_WEBHOOK_URL, {
@@ -46,7 +51,10 @@ async function takeStepScreenshot(page, stepName, accountIndex) {
         const fileName = `screenshot-acc${accountIndex}-${timestamp}-${stepName.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
         await page.screenshot({ path: fileName, fullPage: true });
         console.log(`📸 スクリーンショット保存: ${fileName}`);
-    } catch (e) {}
+        return fileName;
+    } catch (e) {
+        return null;
+    }
 }
 
 // 🧹 モーダルやサイドパネルを強制的に閉じるヘルパー
@@ -108,6 +116,82 @@ async function attachImageForTopic(page) {
     } catch (err) {
         console.log('⚠️ 画像の添付中に軽微なエラーが発生しました:', err.message);
     }
+}
+
+// 🤖 Gemini APIに画面情報を送り、各セクションのプラスボタンのインデックスや座標を特定させる関数
+async function askGeminiForSectionButtons(page) {
+    // 1. ページ上のすべてのボタン候補の情報を抽出
+    const buttonsInfo = await page.evaluate(() => {
+        const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
+        return allEls.map((el, index) => {
+            const rect = el.getBoundingClientRect();
+            return {
+                domIndex: index,
+                text: (el.innerText || '').trim().substring(0, 30),
+                ariaLabel: el.getAttribute('aria-label') || '',
+                testId: el.getAttribute('data-testid') || '',
+                className: el.className || '',
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
+            };
+        }).filter(b => b.y > 30 && b.y < 350 && b.x < 1200 && b.width > 10 && b.height > 10);
+    });
+
+    if (!GEMINI_API_KEY) {
+        console.log('⚠️ GEMINI_API_KEY が設定されていないため、デフォルトの座標ソートにフォールバックします。');
+        return buttonsInfo
+            .filter(b => b.text.includes('+') || b.ariaLabel.includes('Add') || b.ariaLabel.includes('追加') || b.className.includes('add'))
+            .sort((a, b) => a.x - b.x)
+            .map(b => b.domIndex);
+    }
+
+    try {
+        // スクリーンショットを撮影してGeminiに渡す準備
+        const screenshotPath = await takeStepScreenshot(page, 'ai-analysis', 1);
+        let imagePart = null;
+        if (screenshotPath && fs.existsSync(screenshotPath)) {
+            const imageBuffer = fs.readFileSync(screenshotPath);
+            imagePart = {
+                inlineData: {
+                    data: imageBuffer.toString("base64"),
+                    mimeType: "image/png"
+                }
+            };
+        }
+
+        const prompt = `
+あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、**各セクション（カラム）の列にある新規投稿用の「＋」ボタン（またはセクション追加ボタン）**に該当する要素の `domIndex` を、**左から右の列順（X座標の昇順）**に配列としてJSON形式でのみ返してください。
+余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。
+
+ボタンリスト:
+${JSON.stringify(buttonsInfo, null, 2)}
+        `;
+
+        const contents = imagePart ? [prompt, imagePart] : [prompt];
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: contents,
+        });
+
+        const textResponse = response.text.trim();
+        // JSON部分だけを抽出すべく正規表現でパース
+        const match = textResponse.match(/\[[\d,\s]*\]/);
+        if (match) {
+            const indices = JSON.parse(match[0]);
+            console.log(`🤖 Gemini AI が特定したセクションボタンのDOMインデックス:`, indices);
+            return indices;
+        }
+    } catch (err) {
+        console.log('⚠️ Gemini APIによる解析中にエラーが発生しました。フォールバックします:', err.message);
+    }
+
+    // フォールバック
+    return buttonsInfo
+        .filter(b => b.text.includes('+') || b.ariaLabel.includes('Add') || b.ariaLabel.includes('追加'))
+        .sort((a, b) => a.x - b.x)
+        .map(b => b.domIndex);
 }
 
 async function main() {
@@ -192,20 +276,11 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 ブラウザ側でセクションの「＋」ボタンを検出する数を取得
-                const sectionCount = await page.evaluate(() => {
-                    const buttons = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"]'));
-                    const sectionBtns = buttons.filter(el => {
-                        const rect = el.getBoundingClientRect();
-                        const text = el.innerText || '';
-                        const aria = el.getAttribute('aria-label') || '';
-                        return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post') || el.classList.toString().includes('add'));
-                    });
-                    return sectionBtns.length;
-                });
+                // 🤖 Gemini AIにボタンの位置を解析させる
+                const targetDomIndices = await askGeminiForSectionButtons(page);
+                console.log(`🔍 AIが選定した有効なセクション列数: ${targetDomIndices.length}個`);
 
-                console.log(`🔍 ブラウザ側で検出された有効なセクション列数: ${sectionCount}個`);
-                const maxSections = Math.min(sectionCount > 0 ? sectionCount : 5, 6);
+                const maxSections = Math.min(targetDomIndices.length, 6);
 
                 for (let i = 0; i < maxSections; i++) {
                     try {
@@ -213,22 +288,14 @@ async function main() {
 
                         console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
 
-                        // 💡 ブラウザ側でマウスイベント（mousedown, mouseup, click）を強制発火させて確実にフォームを開く
-                        const clicked = await page.evaluate((targetIndex) => {
-                            const elements = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"]'));
-                            const sectionBtns = elements.filter(el => {
-                                const rect = el.getBoundingClientRect();
-                                const text = el.innerText || '';
-                                const aria = el.getAttribute('aria-label') || '';
-                                return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post') || el.classList.toString().includes('add'));
-                            });
-                            
-                            // X座標（左から右）の順にソート
-                            sectionBtns.sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+                        const domIndexToClick = targetDomIndices[i];
 
-                            const target = sectionBtns[targetIndex];
+                        // ブラウザ側で指定されたDOMインデックスの要素を安全にクリック
+                        const clicked = await page.evaluate((targetIdx) => {
+                            const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"]'));
+                            const target = allEls[targetIdx];
                             if (target) {
-                                // 複数のマウスイベントを順番に発火させて確実に反応させる
+                                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                                 ['mousedown', 'mouseup', 'click'].forEach(eventType => {
                                     const event = new MouseEvent(eventType, {
                                         view: window,
@@ -241,10 +308,10 @@ async function main() {
                                 return true;
                             }
                             return false;
-                        }, i);
+                        }, domIndexToClick);
 
                         if (!clicked) {
-                            console.log(`⚠️ セクション ${i + 1} のボタンが見つからないためスキップします。`);
+                            console.log(`⚠️ セクション ${i + 1} のボタン要素（Index: ${domIndexToClick}）が見つからないためスキップします。`);
                             continue;
                         }
 

@@ -192,8 +192,8 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 各セクション列の「＋」ボタンやプラスアイコンを含む要素を幅広く取得
-                let allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], button:has-text("+")');
+                // 💡 各セクション列のヘッダー下にある「＋」アイコン・ボタンを確実に取得
+                let allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], div[role="region"] button:has-text("+"), button:has(.lucide-plus), button:has(svg)');
                 
                 const validSectionBtns = [];
                 const seenX = new Set();
@@ -201,7 +201,7 @@ async function main() {
                 for (const btn of allAddBtns) {
                     try {
                         const box = await btn.boundingBox();
-                        // 右下の全体投稿ボタン（X > 1000）や下部の不要な要素を完全に除外
+                        // 画面上部（Y: 40~350）にあり、右下の全体投稿ボタン（X > 1000）を除外
                         if (box && box.y > 40 && box.y < 350 && box.x < 1000) {
                             const roundedX = Math.round(box.x / 50) * 50;
                             if (!seenX.has(roundedX)) {
@@ -221,8 +221,8 @@ async function main() {
                     try {
                         await closeAllModalsAndPopups(page);
 
-                        // 最新のボタン位置を再スキャン
-                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], button:has-text("+")');
+                        // 再スキャン
+                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], div[role="region"] button:has-text("+"), button:has(.lucide-plus), button:has(svg)');
                         const currentList = [];
                         const currentSeenX = new Set();
 
@@ -240,44 +240,47 @@ async function main() {
                         }
                         currentList.sort((a, b) => a.x - b.x);
 
-                        if (!currentList[i] || !currentList[i].btn) {
+                        if (!currentList[i]) {
                             console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
                             continue;
                         }
 
-                        const targetBtn = currentList[i].btn;
-                        console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(currentList[i].x)}) に投稿を作成中...`);
+                        const targetInfo = currentList[i];
+                        console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetInfo.x)}) に投稿を作成中...`);
                         
-                        await targetBtn.scrollIntoViewIfNeeded();
+                        await targetInfo.btn.scrollIntoViewIfNeeded();
                         await page.waitForTimeout(500);
 
-                        // 💡 確実にクリックするため、要素の中心を直接マウスで叩く
-                        const box = await targetBtn.boundingBox();
-                        if (box) {
-                            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                        } else {
-                            await targetBtn.click({ force: true });
-                        }
-                        await page.waitForTimeout(1500);
+                        // 💡 複数回クリックを試行して確実にダイアログを開く
+                        let dialogOpened = false;
+                        for (let clickAttempt = 0; clickAttempt < 3; clickAttempt++) {
+                            const box = await targetInfo.btn.boundingBox();
+                            if (box) {
+                                await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                            } else {
+                                await targetInfo.btn.click({ force: true });
+                            }
+                            await page.waitForTimeout(1000);
 
-                        // 🔍 投稿ダイアログ（件名入力欄）が開いたかチェック。開いていなければ少し下や位置を変えて再クリック
-                        let titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
-                        if (!titleInput && box) {
-                            // 「＋」ボタンのすぐ下あたりをクリックしてみるフォールバック
-                            await page.mouse.click(box.x + box.width / 2, box.y + box.height + 20);
-                            await page.waitForTimeout(1500);
-                            titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
+                            const checkInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
+                            if (checkInput) {
+                                dialogOpened = true;
+                                break;
+                            }
                         }
 
-                        if (!titleInput) {
+                        if (!dialogOpened) {
                             console.log(`⚠️ [セクション ${i + 1}] 投稿フォームが開かなかったためスキップします。`);
                             continue;
                         }
 
                         // 件名入力
-                        await titleInput.click();
-                        await titleInput.fill(TOPIC_TITLE);
-                        await page.waitForTimeout(600);
+                        const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
+                        if (titleInput) {
+                            await titleInput.click();
+                            await titleInput.fill(TOPIC_TITLE);
+                            await page.waitForTimeout(600);
+                        }
 
                         // 本文入力
                         const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"], textarea');

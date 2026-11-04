@@ -1,7 +1,7 @@
 import os
 import json
 import time
-import glob
+import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from google import genai
@@ -10,6 +10,12 @@ from google import genai
 TOPIC_TITLE = os.getenv("TOPIC_TITLE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳"))
 TOPIC_MESSAGE = os.getenv("TOPIC_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 COMMENT_MESSAGE = os.getenv("COMMENT_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
+
+# 🔄 繰り返し回数（デフォルトは2回。環境変数から指定可能）
+try:
+    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "2")))
+except ValueError:
+    TOTAL_ROUNDS = 2
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "a62e0a5b (1).gif")
 TARGET_BOARD_URL = os.getenv("TARGET_URL")
@@ -37,7 +43,7 @@ def send_discord_notification(board_url, account_index):
             headers={"Content-Type": "application/json"}
         )
         with urllib.request.urlopen(req) as response:
-            if response.status == 200 or response.status == 204:
+            if response.status in [200, 204]:
                 print("✅ Discordへの通知送信に成功しました！")
             else:
                 print(f"❌ Discordへの通知送信に失敗しました: {response.status}")
@@ -152,7 +158,6 @@ def ask_gemini_for_section_buttons(page, account_num):
         )
 
         text_response = response.text.strip()
-        import re
         match = re.search(r"\[[\d,\s]*\]", text_response)
         if match:
             indices = json.loads(match.group(0))
@@ -229,11 +234,11 @@ def main():
                 if "login" in current_url or "verify" in current_url or page.query_selector("text=registered users only"):
                     raise Exception("クッキーの有効期限が切れているか、ログインしていません。")
 
-                print("ボードの読み込み完了！処理を開始します...")
+                print(f"ボードの読み込み完了！全 {TOTAL_ROUNDS} ラウンドの処理を開始します...")
 
-                for round_num in range(1, 3):
+                for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n========================================")
-                    print(f"🔄 【 処理ラウンド {round_num} / 2 回目 】")
+                    print(f"🔄 【 処理ラウンド {round_num} / {TOTAL_ROUNDS} 回目 】")
                     print(f"========================================")
 
                     print(f"\n📂 【全セクションへの新規投稿開始】")
@@ -389,7 +394,7 @@ def main():
 
                     print(f"\n🎉 ラウンド {round_num} の処理が完了しました！")
 
-                    if round_num < 2:
+                    if round_num < TOTAL_ROUNDS:
                         print("🔄 次のラウンドへ向けてボードを再読み込みします...")
                         page.reload(wait_until="domcontentloaded")
                         time.sleep(5)

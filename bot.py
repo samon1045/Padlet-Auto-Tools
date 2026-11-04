@@ -11,7 +11,7 @@ TOPIC_TITLE = os.getenv("TOPIC_TITLE", os.getenv("CUSTOM_MESSAGE", "さーもん
 TOPIC_MESSAGE = os.getenv("TOPIC_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 COMMENT_MESSAGE = os.getenv("COMMENT_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 
-# 🔄 繰り返し回数（デフォルトは2回。環境変数から指定可能）
+# 🔄 繰り返し回数
 try:
     TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "2")))
 except ValueError:
@@ -212,8 +212,8 @@ def main():
                 
                 with open(auth_file, "w", encoding="utf-8") as f:
                     json.dump({"cookies": cleaned_cookies, "origins": []}, f, indent=2)
-            except Exception as e:
-                print(f"❌ アカウント #{account_num} のクッキー処理に失敗しました: {e}")
+            except Exception as err:
+                print(f"❌ アカウント #{account_num} のクッキー処理に失敗しました: {err}")
                 continue
 
             browser = p.chromium.launch(

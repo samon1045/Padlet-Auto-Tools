@@ -13,11 +13,11 @@ TOPIC_MESSAGE = os.getenv("TOPIC_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さー�
 COMMENT_MESSAGE = os.getenv("COMMENT_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 
 try:
-    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "2")))
+    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "1")))
 except ValueError:
     TOTAL_ROUNDS = 2
 
-IMAGE_PATH = os.path.join(os.path.dirname(__file__), "a62e0a5b (1).gif")
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), "_______.gif")
 TARGET_BOARD_URL = os.getenv("TARGET_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 

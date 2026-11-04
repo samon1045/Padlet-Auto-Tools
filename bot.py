@@ -154,7 +154,7 @@ def ask_gemini_for_section_buttons(page, account_num):
 
             prompt = (
                 "あなたはPadlet自動化のエキスパートAIです。提供されたスクリーンショットと以下のボタン要素のJSONリストを分析し、"
-                "各セクション（カラム）の列にある新規投稿用のプラスボタン（またはセクションの投稿ボタン）に該当する要素の domIndex を、"
+                "各セクション（カラム）の列にある新規投稿用のプラスボタンに該当する要素の domIndex を、"
                 "左から右の列順（X座標の昇順）に配列としてJSON形式でのみ返してください。"
                 "余計な解説は一切不要で、例: [12, 45, 67, 89] のようなJSON配列のみ出力してください。\n\nボタンリスト:\n"
                 + json.dumps(buttons_info, ensure_ascii=False, indent=2)
@@ -162,7 +162,7 @@ def ask_gemini_for_section_buttons(page, account_num):
 
             contents = [prompt, image_part] if image_part else [prompt]
             response = ai_client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.8-flash",
                 contents=contents,
             )
 
@@ -178,9 +178,9 @@ def ask_gemini_for_section_buttons(page, account_num):
             print(f"⚠️ 検査試行 {attempt} 回目でエラー: {err}")
             time.sleep(1.0)
 
-    # 万が一AIやパースでインデックスが取れなかった場合の強力なフォールバック
+    # フォールバック（AIが失敗したとき用の安全な座標・テキスト選定）
     if not indices:
-        print("⚠️ AI解析が取得できなかったため、座標ソートによる自動フォールバックを実行します。")
+        print("⚠️ AI解析が取得できなかったため、信頼性の高いセクションボタン選定を実行します。")
         fallback_indices = page.evaluate("""() => {
             const allEls = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
             let valid = [];
@@ -188,16 +188,16 @@ def ask_gemini_for_section_buttons(page, account_num):
                 const rect = el.getBoundingClientRect();
                 const text = (el.innerText || '').trim();
                 const aria = el.getAttribute('aria-label') || '';
-                if ((text.includes('+') || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && rect.y > 30 && rect.y < 350 && rect.width > 10) {
+                // カラムヘッダー付近の＋ボタンや追加ボタンに絞り込む
+                if ((text === '+' || text.includes('追加') || aria.includes('Add') || aria.includes('追加') || el.className.includes('add')) && rect.y > 20 && rect.y < 250 && rect.width > 15 && rect.height > 15) {
                     valid.push({ domIndex: index, x: Math.round(rect.x) });
                 }
             });
-            // X座標でソートして重複を排除
             valid.sort((a, b) => a.x - b.x);
             let unique = [];
             let lastX = -999;
             valid.forEach(item => {
-                if (Math.abs(item.x - lastX) > 30) {
+                if (Math.abs(item.x - lastX) > 40) {
                     unique.push(item.domIndex);
                     lastX = item.x;
                 }
@@ -225,7 +225,7 @@ def main():
                     account_cookie_lists = parsed_env
                 else:
                     account_cookie_lists = [parsed_env]
-        except Exception as err:
+        except Exception:
             matches = re.findall(r'\[\s*\{.*?\}\s*\]', raw_auths_env, re.DOTALL)
             for m in matches:
                 try:
@@ -300,7 +300,7 @@ def main():
                     max_sections = min(len(target_dom_indices), 6)
 
                     if max_sections == 0:
-                        print("⚠️ 新規投稿用のプラスボタンが検出されませんでした。ページ構造を確認してください。")
+                        print("⚠️ 新規投稿用のプラスボタンが検出されませんでした。")
 
                     for i in range(max_sections):
                         try:
@@ -310,7 +310,7 @@ def main():
                             dom_index_to_click = target_dom_indices[i]
 
                             clicked = page.evaluate("""(targetIdx) => {
-                                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div[class*="add"], span[class*="add"], [aria-label*="Add"], [aria-label*="追加"]'));
+                                const allEls = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                                 const target = allEls[targetIdx];
                                 if (target) {
                                     target.scrollIntoView({ behavior: 'smooth', block: 'center' });

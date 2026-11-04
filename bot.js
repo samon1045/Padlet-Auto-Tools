@@ -173,7 +173,7 @@ async function main() {
         try {
             console.log('Padletボードにアクセス中...');
             await page.goto(TARGET_BOARD_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(5000);
+            await page.waitForTimeout(6000);
 
             await takeStepScreenshot(page, 'after-goto', accountNum);
 
@@ -192,95 +192,66 @@ async function main() {
                 console.log(`\n📂 【全セクションへの新規投稿開始】`);
                 await closeAllModalsAndPopups(page);
 
-                // 💡 各セクション列のヘッダー下にある「＋」アイコン・ボタンを確実に取得
-                let allAddBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], div[role="region"] button:has-text("+"), button:has(.lucide-plus), button:has(svg)');
-                
-                const validSectionBtns = [];
-                const seenX = new Set();
+                // 💡 ブラウザ側（DOM）のJavaScriptを使って、各セクションにある「＋」ボタンの数を正確に把握する
+                const sectionCount = await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const sectionBtns = buttons.filter(btn => {
+                        const rect = btn.getBoundingClientRect();
+                        const text = btn.innerText || '';
+                        const aria = btn.getAttribute('aria-label') || '';
+                        // 画面上部にあり、右下の全体投稿ボタン（X > 1000）ではないもの
+                        return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post'));
+                    });
+                    return sectionBtns.length;
+                });
 
-                for (const btn of allAddBtns) {
-                    try {
-                        const box = await btn.boundingBox();
-                        // 画面上部（Y: 40~350）にあり、右下の全体投稿ボタン（X > 1000）を除外
-                        if (box && box.y > 40 && box.y < 350 && box.x < 1000) {
-                            const roundedX = Math.round(box.x / 50) * 50;
-                            if (!seenX.has(roundedX)) {
-                                seenX.add(roundedX);
-                                validSectionBtns.push({ btn: btn, x: box.x, y: box.y });
-                            }
-                        }
-                    } catch (e) {}
-                }
-
-                validSectionBtns.sort((a, b) => a.x - b.x);
-                console.log(`🔍 検出された有効なセクション列数: ${validSectionBtns.length}個`);
-
-                const maxSections = Math.min(validSectionBtns.length, 6);
+                console.log(`🔍 ブラウザ側で検出された有効なセクション列数: ${sectionCount}個`);
+                const maxSections = Math.min(sectionCount, 6);
 
                 for (let i = 0; i < maxSections; i++) {
                     try {
                         await closeAllModalsAndPopups(page);
 
-                        // 再スキャン
-                        let refreshBtns = await page.$$('button[aria-label*="投稿を追加"], button[aria-label*="Add post"], button.section-add-btn, [data-testid*="section-add"], div[role="region"] button:has-text("+"), button:has(.lucide-plus), button:has(svg)');
-                        const currentList = [];
-                        const currentSeenX = new Set();
+                        console.log(`\n➡️ セクション ${i + 1} に投稿を作成中...`);
 
-                        for (const b of refreshBtns) {
-                            try {
-                                const box = await b.boundingBox();
-                                if (box && box.y > 40 && box.y < 350 && box.x < 1000) {
-                                    const roundedX = Math.round(box.x / 50) * 50;
-                                    if (!currentSeenX.has(roundedX)) {
-                                        currentSeenX.add(roundedX);
-                                        currentList.push({ btn: b, x: box.x, y: box.y });
-                                    }
-                                }
-                            } catch (e) {}
-                        }
-                        currentList.sort((a, b) => a.x - b.x);
+                        // 💡 ブラウザ側で直接インデックスを指定して「＋」ボタンをクリックさせる
+                        const clicked = await page.evaluate((targetIndex) => {
+                            const buttons = Array.from(document.querySelectorAll('button'));
+                            const sectionBtns = buttons.filter(btn => {
+                                const rect = btn.getBoundingClientRect();
+                                const text = btn.innerText || '';
+                                const aria = btn.getAttribute('aria-label') || '';
+                                return rect.y > 40 && rect.y < 350 && rect.x < 1000 && (text.includes('+') || aria.includes('投稿を追加') || aria.includes('Add post'));
+                            });
+                            
+                            // X座標（左から右）の順にソート
+                            sectionBtns.sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
 
-                        if (!currentList[i]) {
-                            console.log(`⚠️ セクション ${i + 1} の投稿ボタンが見つからないためスキップします。`);
+                            if (sectionBtns[targetIndex]) {
+                                sectionBtns[targetIndex].click();
+                                return true;
+                            }
+                            return false;
+                        }, i);
+
+                        if (!clicked) {
+                            console.log(`⚠️ セクション ${i + 1} のボタンが見つからないためスキップします。`);
                             continue;
                         }
 
-                        const targetInfo = currentList[i];
-                        console.log(`\n➡️ セクション ${i + 1} (X座標: ${Math.round(targetInfo.x)}) に投稿を作成中...`);
-                        
-                        await targetInfo.btn.scrollIntoViewIfNeeded();
-                        await page.waitForTimeout(500);
+                        await page.waitForTimeout(2000);
 
-                        // 💡 複数回クリックを試行して確実にダイアログを開く
-                        let dialogOpened = false;
-                        for (let clickAttempt = 0; clickAttempt < 3; clickAttempt++) {
-                            const box = await targetInfo.btn.boundingBox();
-                            if (box) {
-                                await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                            } else {
-                                await targetInfo.btn.click({ force: true });
-                            }
-                            await page.waitForTimeout(1000);
-
-                            const checkInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
-                            if (checkInput) {
-                                dialogOpened = true;
-                                break;
-                            }
-                        }
-
-                        if (!dialogOpened) {
+                        // 件名入力欄の出現を待つ
+                        const titleInput = await page.waitForSelector('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]', { timeout: 4000 }).catch(() => null);
+                        if (!titleInput) {
                             console.log(`⚠️ [セクション ${i + 1}] 投稿フォームが開かなかったためスキップします。`);
                             continue;
                         }
 
                         // 件名入力
-                        const titleInput = await page.$('input[placeholder*="件名"], input[placeholder*="Title"], input[placeholder*="タイトル"], input[type="text"]');
-                        if (titleInput) {
-                            await titleInput.click();
-                            await titleInput.fill(TOPIC_TITLE);
-                            await page.waitForTimeout(600);
-                        }
+                        await titleInput.click();
+                        await titleInput.fill(TOPIC_TITLE);
+                        await page.waitForTimeout(600);
 
                         // 本文入力
                         const bodyEditor = await page.$('div[contenteditable="true"], p.is-editor-empty, [data-placeholder*="素晴らしい"], [data-placeholder*="fabulous"], textarea');
@@ -367,6 +338,7 @@ async function main() {
 
                     try {
                         await targetBtn.scrollIntoViewIfNeeded();
+                        await page.waitForTimeout(300);
                         await targetBtn.click({ force: true });
                         await page.waitForTimeout(1200);
 

@@ -173,21 +173,34 @@ def main():
         print("❌ TARGET_URLが指定されていません。")
         exit(1)
 
-    raw_keys_env = os.getenv("AUTH_JSONS", os.getenv("AUTH_JSON", ""))
+    raw_auths_env = os.getenv("AUTH_JSONS", os.getenv("AUTH_JSON", ""))
     auth_list = []
-    current_block = ""
-    bracket_count = 0
 
-    for char in raw_keys_env:
-        if char == "[":
-            bracket_count += 1
-        if bracket_count > 0:
-            current_block += char
-        if char == "]":
-            bracket_count -= 1
-            if bracket_count == 0 and len(current_block.strip()) > 0:
-                auth_list.append(current_block.strip())
-                current_block = ""
+    if raw_auths_env:
+        try:
+            parsed_env = json.loads(raw_auths_env)
+            if isinstance(parsed_env, list):
+                # 配列の中にさらに配列やオブジェクトが入っている場合を考慮
+                if len(parsed_env) > 0 and isinstance(parsed_env[0], list):
+                    auth_list = [json.dumps(item) for item in parsed_env]
+                else:
+                    auth_list = [raw_auths_env]
+            else:
+                auth_list = [raw_auths_env]
+        except Exception:
+            # JSONとして直接パースできない場合はブロックごとに分割を試みる
+            current_block = ""
+            bracket_count = 0
+            for char in raw_auths_env:
+                if char == "[":
+                    bracket_count += 1
+                if bracket_count > 0:
+                    current_block += char
+                if char == "]":
+                    bracket_count -= 1
+                    if bracket_count == 0 and len(current_block.strip()) > 0:
+                        auth_list.append(current_block.strip())
+                        current_block = ""
 
     if not auth_list:
         print("⚠️ 有効なクッキーデータが見つかりません。AUTH_JSONS環境変数を確認してください。")

@@ -41,3 +41,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python bot.py
+
+      # 💡 【追加】ボットの成功・失敗に関わらず、画面録画の成果物をアップロードする
+      - name: Upload Recorded Video
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-recording
+          path: videos/

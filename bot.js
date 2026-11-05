@@ -16,12 +16,27 @@ async function humanDelay(page, minMs = 2500, maxMs = 5000) {
     await page.waitForTimeout(delay);
 }
 
+// 邪魔なオーバーレイやポップアップがあれば閉じる補助関数
+async function clearOverlays(page) {
+    try {
+        const overlay = page.locator('.oz-overlay, [data-testid*="Dialog"], [data-testid*="modal"]');
+        if (await overlay.count() > 0 && await overlay.first().isVisible()) {
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
+        }
+    } catch (e) {}
+}
+
 async function humanType(page, locator, text) {
-    await locator.click();
+    await clearOverlays(page);
+    await locator.click({ timeout: 5000 }).catch(async () => {
+        // 万が一クリックが遮られたら強制的にフォーカスを当てる
+        await locator.evaluate(node => node.focus());
+    });
     await page.waitForTimeout(300);
     for (let char of text) {
         await page.keyboard.type(char);
-        await page.waitForTimeout(Math.floor(Math.random() * 50) + 20);
+        await page.waitForTimeout(Math.floor(Math.random() * 40) + 20);
     }
 }
 
@@ -107,6 +122,7 @@ async function main() {
 
             for (let roundNum = 1; roundNum <= TOTAL_ROUNDS; roundNum++) {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
+                await clearOverlays(page);
 
                 const totalSections = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
@@ -122,11 +138,11 @@ async function main() {
                     return count;
                 });
 
-                const sectionCount = Math.max(totalSections, 1);
-                console.log(`📝 検出されたセクション数: ${sectionCount}`);
+                const sectionCount = Math.max(Math.min(totalSections, 10), 1); // 暴走防止のため1セッションあたり最大10セクションまでに安全制限
+                console.log(`📝 検出されたセクション数 (安全制限適用): ${sectionCount}`);
 
                 // -------------------------------------------------------------
-                // 1. 各セクションへの投稿処理（画像添付の確実化）
+                // 1. 各セクションへの投稿処理（画像付き）
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
@@ -134,6 +150,7 @@ async function main() {
                     for (let secIdx = 0; secIdx < sectionCount; secIdx++) {
                         for (let postRepeat = 1; postRepeat <= 2; postRepeat++) {
                             console.log(`➡️ セクション ${secIdx + 1} への投稿 (回数 ${postRepeat}/2)...`);
+                            await clearOverlays(page);
 
                             if (is429Hit) {
                                 console.log("⏳ 429解除のため 10 秒間待機します...");
@@ -169,6 +186,7 @@ async function main() {
                             }
 
                             await humanDelay(page, 2000, 3000);
+                            await clearOverlays(page);
 
                             // タイトルとメッセージを入力
                             const editables = page.locator('div[contenteditable="true"], textarea, input[type="text"]');
@@ -184,24 +202,20 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像（GIF）の添付（★アタッチボタン経由でダイアログを確実に開いてからファイルをセット）
+                            // 🖼️ 画像（GIF）の添付処理の確実化
                             if (fs.existsSync(imagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
-                                    
-                                    // 添付アイコン（画像・ファイル追加ボタン）を探してクリック
                                     const attachBtn = page.locator('button[aria-label*="attachment"], button[aria-label*="image"], button[aria-label*="file"], button[aria-label*="画像"], button[aria-label*="ファイル"], [data-testid*="attachment"]');
                                     if (await attachBtn.count() > 0) {
                                         await attachBtn.first().click();
                                         await humanDelay(page, 1000, 1500);
                                     }
 
-                                    // ファイル入力を検知してファイルを流し込む
                                     const fileInput = page.locator('input[type="file"]').last();
                                     if (await fileInput.count() > 0) {
                                         await fileInput.setInputFiles(imagePath);
-                                        // アップロードのプレビュー生成をしっかり待つ
-                                        await humanDelay(page, 6000, 8000);
+                                        await humanDelay(page, 5000, 7000); // プレビュー生成待ち
                                     }
                                 } catch (imgErr) {
                                     console.log(`⚠️ 画像添付エラー: ${imgErr.message}`);
@@ -231,6 +245,7 @@ async function main() {
                             }
 
                             await humanDelay(page, 4000, 6000);
+                            await clearOverlays(page);
                         }
                     }
                 }
@@ -249,6 +264,7 @@ async function main() {
                     console.log(`💬 検出されたコメント入力欄対象数: ${commentCount}`);
 
                     for (let i = 0; i < commentCount; i++) {
+                        await clearOverlays(page);
                         if (is429Hit) {
                             console.log("⏳ 429解除のため 10 秒間待機します...");
                             await page.waitForTimeout(10000);

@@ -7,7 +7,7 @@ async function main() {
     const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
     const authJsonsEnv = process.env.AUTH_JSONS;
     
-    // 💡 2回（または環境変数指定の回数）繰り返す設定
+    // 💡 2回繰り返す設定
     const totalRounds = 2;
 
     if (!targetUrl || !authJsonsEnv) {
@@ -58,7 +58,8 @@ async function main() {
             recordVideoSize: { width: 1280, height: 720 }
         });
 
-        const page = await context.new_page();
+        // 修正箇所: new_page() から newPage() に変更
+        const page = await context.newPage();
 
         try {
             console.log("ボードにアクセス中...");

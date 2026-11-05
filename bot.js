@@ -4,9 +4,9 @@ const path = require('path');
 
 const TARGET_URL = process.env.TARGET_URL;
 const TITLE_MESSAGE = process.env.TITLE_MESSAGE || "さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado";
-const CUSTOM_MESSAGE = process.env.CUSTOM_MESSAGE || "お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ";
-
+// 本文にメッセージと画像URLを統合して自動でプレビュー表示させるようにします
 const IMAGE_URL = process.env.IMAGE_URL || "https://videotourl.com/images/1793876226932-8e8e55c2-70b5-480f-a533-84510fa11a81.gif";
+const CUSTOM_MESSAGE = (process.env.CUSTOM_MESSAGE || "お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ") + "\n" + IMAGE_URL;
 
 const TOTAL_ROUNDS = parseInt(process.env.TOTAL_ROUNDS || "2", 10);
 const ENABLE_POST = process.env.ENABLE_POST !== "false";
@@ -37,7 +37,7 @@ async function humanType(page, locator, text) {
     await page.waitForTimeout(300);
     for (let char of text) {
         await page.keyboard.type(char);
-        await page.waitForTimeout(Math.floor(Math.random() * 30) + 10);
+        await page.waitForTimeout(Math.floor(Math.random() * 20) + 10);
     }
 }
 
@@ -47,7 +47,7 @@ async function main() {
         process.exit(1);
     }
 
-    console.log("=== 🚀 Padlet Bot 起動パラメータ (URL添付版) ===");
+    console.log("=== 🚀 Padlet Bot 起動パラメータ (完全自動投稿版) ===");
     console.log(`・ターゲットURL: ${TARGET_URL}`);
     console.log(`・画像URL: ${IMAGE_URL}`);
     console.log(`・実行ラウンド数: ${TOTAL_ROUNDS}`);
@@ -124,7 +124,7 @@ async function main() {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
                 await clearOverlays(page);
 
-                // 全セクションの数を確認
+                // 全セクションの数を取得
                 const sectionCount = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
@@ -142,7 +142,7 @@ async function main() {
                 console.log(`📝 検出されたセクション数 (全件対象): ${sectionCount}`);
 
                 // -------------------------------------------------------------
-                // 1. 全セクションへの投稿処理（2回連続・インデックスズレ防止対策版）
+                // 1. 全セクションへの投稿処理（2回連続）
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
@@ -158,7 +158,7 @@ async function main() {
                                 is429Hit = false;
                             }
 
-                            // セクションの「＋」ボタンをその都度再スキャンして正確にクリック
+                            // セクションの「＋」ボタンを毎回確実に再スキャンしてクリック
                             const clicked = await page.evaluate((sIdx) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -195,39 +195,12 @@ async function main() {
 
                             if (editCount > 0) {
                                 await humanType(page, editables.nth(0), TITLE_MESSAGE);
-                                await humanDelay(page, 600, 1000);
+                                await humanDelay(page, 500, 800);
                             }
 
                             if (editCount > 1) {
                                 await humanType(page, editables.nth(1), CUSTOM_MESSAGE);
-                                await humanDelay(page, 600, 1000);
-                            }
-
-                            // 🔗 対策2：URL（リンク）機能を使って画像を直接貼り付けて埋め込む
-                            try {
-                                console.log("🔗 URLリンク機能を使って画像を添付中...");
-                                // リンク・URL添付アイコンを探索してクリック
-                                const linkIconBtn = page.locator('button[aria-label*="リンク"], button[aria-label*="link"], button[aria-label*="URL"], [data-testid*="link"], [data-testid*="url"]').first();
-                                if (await linkIconBtn.count() > 0 && await linkIconBtn.isVisible()) {
-                                    await linkIconBtn.click();
-                                    await humanDelay(page, 1000, 1500);
-
-                                    // 出現したURL入力用テキストボックスに画像URLをタイプ
-                                    const urlInputBox = page.locator('input[type="url"], input[placeholder*="URL"], input[placeholder*="https"], input[type="text"]').last();
-                                    if (await urlInputBox.count() > 0) {
-                                        await humanType(page, urlInputBox, IMAGE_URL);
-                                        await humanDelay(page, 1000, 1500);
-
-                                        // リンク追加・確定ボタンがあれば押す
-                                        const addLinkConfirmBtn = page.locator('button:has-text("保存"), button:has-text("追加"), button:has-text("Save"), button:has-text("Add")').last();
-                                        if (await addLinkConfirmBtn.count() > 0 && await addLinkConfirmBtn.isVisible()) {
-                                            await addLinkConfirmBtn.click();
-                                            await humanDelay(page, 3000, 4000);
-                                        }
-                                    }
-                                }
-                            } catch (urlErr) {
-                                console.log(`⚠️ URL添付スキップ/エラー: ${urlErr.message}`);
+                                await humanDelay(page, 1500, 2000); // プレビュー生成の自動読み込みを待つ
                             }
 
                             // 投稿公開ボタンをクリック
@@ -252,7 +225,7 @@ async function main() {
                                 await page.keyboard.press("Control+Enter");
                             }
 
-                            await humanDelay(page, 3000, 5000);
+                            await humanDelay(page, 3000, 4000);
                             await clearOverlays(page);
                         }
                     }

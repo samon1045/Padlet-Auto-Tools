@@ -7,7 +7,6 @@ async function main() {
     const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
     const authJsonsEnv = process.env.AUTH_JSONS;
     
-    // 💡 10回に戻して一気に高速実行
     const totalRounds = 10;
 
     if (!targetUrl || !authJsonsEnv) {
@@ -92,8 +91,10 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿作成・画像添付・送信（高速化）
+                // 2. 各セクションへの投稿作成・画像添付・送信（ここが復活した部分です！）
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
+                    console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
+
                     const isSuccess = await page.evaluate(async ({ secIndex, message }) => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
@@ -114,7 +115,7 @@ async function main() {
                         if (!targetBtn) return false;
                         
                         targetBtn.click();
-                        await new Promise(r => setTimeout(r, 800)); // 待機を短縮
+                        await new Promise(r => setTimeout(r, 800));
 
                         // タイトルとメッセージの入力
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
@@ -140,9 +141,10 @@ async function main() {
 
                     if (!isSuccess) continue;
 
-                    // 画像ファイルのアップロード処理（最小限の待機に調整）
+                    // 画像ファイルのアップロード処理
                     if (fs.existsSync(imagePath)) {
                         try {
+                            console.log("🖼️ 画像を添付中...");
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
@@ -181,9 +183,10 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    await page.waitForTimeout(1000); // 投稿間のウェイトを最小限に
+                    await page.waitForTimeout(1000);
                 }
 
+                // 3. 高速コメント巡回
                 console.log("⚡ 高速コメント巡回を実行中...");
                 
                 const commentCount = await page.evaluate(async ({ commentMsg }) => {
@@ -245,7 +248,7 @@ async function main() {
                         }
 
                         totalCommented++;
-                        await new Promise(r => setTimeout(r, 800)); // コメント送信間のウェイト短縮
+                        await new Promise(r => setTimeout(r, 800));
                     }
 
                     return totalCommented;

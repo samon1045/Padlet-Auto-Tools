@@ -25,8 +25,6 @@ async function main() {
         process.exit(1);
     }
 
-    const imagePath = path.join(__dirname, "_______.gif");
-
     const browser = await chromium.launch({
         headless: true,
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
@@ -54,16 +52,17 @@ async function main() {
 
         const page = await context.newPage();
 
+        let isRateLimited = false;
         page.on('response', response => {
-            if (response.status() >= 400 && response.url().includes('padlet')) {
-                console.log(`⚠️ API警告: ${response.status()} - ${response.url()}`);
+            if (response.status() === 429 && response.url().includes('padlet')) {
+                isRateLimited = true;
             }
         });
 
         try {
             console.log("ボードにアクセス中...");
             await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(4000);
+            await page.waitForTimeout(5000);
 
             if (page.url().includes("login") || page.url().includes("verify")) {
                 throw new Error("ログインセッションが無効です。");
@@ -92,9 +91,15 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿作成・画像添付・送信
+                // 2. 各セクションへの投稿作成・送信（429対策としてウェイトを強化）
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
                     console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
+
+                    if (isRateLimited) {
+                        console.log("⏳ 429制限検知のため5秒間クールダウンします...");
+                        await page.waitForTimeout(5000);
+                        isRateLimited = false;
+                    }
 
                     const isSuccess = await page.evaluate(async ({ secIndex, message }) => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
@@ -115,7 +120,7 @@ async function main() {
 
                         if (!targetBtn) return false;
                         targetBtn.click();
-                        await new Promise(r => setTimeout(r, 1000));
+                        await new Promise(r => setTimeout(r, 1200));
 
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
                         if (editables.length > 0) {
@@ -131,38 +136,13 @@ async function main() {
                             bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
                         }
 
-                        await new Promise(r => setTimeout(r, 600));
+                        await new Promise(r => setTimeout(r, 800));
                         return true;
                     }, { secIndex: secIdx, message: customMessage });
 
                     if (!isSuccess) continue;
 
-                    // 画像（GIF）のアップロード処理
-                    if (fs.existsSync(imagePath)) {
-                        try {
-                            console.log("🖼️ 画像を添付中...");
-                            const uploadInput = await page.$('input[type="file"]');
-                            if (uploadInput) {
-                                await uploadInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(2500);
-                            } else {
-                                const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
-                                if (attachBtn) {
-                                    await attachBtn.click();
-                                    await page.waitForTimeout(800);
-                                    const lateInput = await page.$('input[type="file"]');
-                                    if (lateInput) {
-                                        await lateInput.setInputFiles(imagePath);
-                                        await page.waitForTimeout(2500);
-                                    }
-                                }
-                            }
-                        } catch (imgErr) {
-                            // ignore
-                        }
-                    }
-
-                    // 投稿を公開
+                    // 投稿を公開送信
                     await page.evaluate(async () => {
                         const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
                         for (let b of buttons) {
@@ -179,10 +159,11 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    await page.waitForTimeout(1800);
+                    // 429回避のため、投稿ごとの間隔を3.5秒にしっかり確保
+                    await page.waitForTimeout(3500);
                 }
 
-                // 3. すべての投稿へのコメント巡回処理（★各投稿に対して2回連続コメントを送信）
+                // 3. すべての投稿へのコメント巡回処理（各投稿に2回連続コメント）
                 console.log("⚡ すべての投稿へのコメント巡回（2回送信）を実行中...");
                 const commentCount = await page.evaluate(async ({ commentMsg }) => {
                     let totalCommented = 0;
@@ -203,22 +184,19 @@ async function main() {
 
                         if (!commentBtn) break;
 
-                        // 各投稿に対して2回連続でコメントを送信
                         for (let cTimes = 0; cTimes < 2; cTimes++) {
                             try {
                                 commentBtn.click();
                             } catch (e) {}
-                            await new Promise(r => setTimeout(r, 800));
+                            await new Promise(r => setTimeout(r, 1000));
 
                             const editor = document.querySelector('div[contenteditable="true"], textarea');
-                            if (!editor) {
-                                break;
-                            }
+                            if (!editor) break;
 
                             editor.focus();
                             editor.innerText = commentMsg;
                             editor.dispatchEvent(new Event('input', { bubbles: true }));
-                            await new Promise(r => setTimeout(r, 600));
+                            await new Promise(r => setTimeout(r, 800));
 
                             const actionButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                             let sent = false;
@@ -238,7 +216,7 @@ async function main() {
                             }
 
                             totalCommented++;
-                            await new Promise(r => setTimeout(r, 1500));
+                            await new Promise(r => setTimeout(r, 2000)); // コメント間隔も安全に空ける
                         }
                     }
                     return totalCommented;
@@ -247,8 +225,9 @@ async function main() {
                 console.log(`✨ ラウンド ${roundNum} 完了（合計 ${commentCount} 件のコメントを送信しました）`);
 
                 if (roundNum < totalRounds) {
+                    console.log("🔄 次のラウンドへ向けてボードを再読み込みします...");
                     await page.reload({ waitUntil: "domcontentloaded" });
-                    await page.waitForTimeout(4000);
+                    await page.waitForTimeout(6000); // ラウンド間は6秒待機してレート制限を完全にリセット
                 }
             }
 

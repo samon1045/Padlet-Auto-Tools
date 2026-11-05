@@ -86,7 +86,7 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿＆画像添付（当時一番スムーズだった安定ループ）
+                // 2. 各セクションへの投稿＆画像添付ループ
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
                     console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
 
@@ -178,7 +178,6 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    // 投稿と次の投稿の間にちょうどいいウェイトを入れて429を自然に回避
                     await page.waitForTimeout(2000);
                     console.log(`🚀 セクション ${secIdx + 1} の処理が完了しました！`);
                 }
@@ -190,7 +189,7 @@ async function main() {
                     let totalCommented = 0;
                     
                     for (let attempt = 0; attempt < 60; attempt++) {
-                        const allElements = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
+                        const allElements = Array.from(document.querySelectorAll('button, [role="button'], div, span'));
                         let commentBtn = null;
 
                         for (let el of allElements) {

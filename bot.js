@@ -96,7 +96,8 @@ async function main() {
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
                     console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
 
-                    const result = await page.evaluate(async ({ secIndex, message }) => {
+                    // 【追加】ここで、現在の状態をコンソールに出力して動作を確認しやすくする
+                    const isSuccess = await page.evaluate(async ({ secIndex, message }) => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
                         let targetBtn = null;
@@ -113,9 +114,10 @@ async function main() {
                             }
                         }
 
-                        if (!targetBtn) return { success: false, reason: 'Add button not found' };
+                        if (!targetBtn) return false; // ボタンが見つからない
+                        
                         targetBtn.click();
-                        await new Promise(r => setTimeout(r, 1500));
+                        await new Promise(r => setTimeout(r, 2000)); // クリック後の待機時間を少し延長
 
                         // タイトルとメッセージの入力
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
@@ -136,55 +138,23 @@ async function main() {
                         }
 
                         await new Promise(r => setTimeout(r, 1000));
-
-                        // 公開（Publish）ボタンの位置・座標ベースでの特定とクリック
-                        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-                        let pubBtn = null;
-                        for (let b of buttons) {
-                            const t = (b.innerText || '').trim();
-                            const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                            const testid = (b.getAttribute('data-testid') || '').toLowerCase();
-                            const rect = b.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
-                                if (
-                                    t.includes('公開') || t.includes('Publish') || t.includes('送信') ||
-                                    a.includes('publish') || a.includes('submit') || a.includes('send') ||
-                                    testid.includes('publish') || testid.includes('submit') ||
-                                    b.className.includes('primary') || b.className.includes('submit')
-                                ) {
-                                    pubBtn = b;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!pubBtn) {
-                            let rightMostX = 0;
-                            for (let b of buttons) {
-                                const rect = b.getBoundingClientRect();
-                                if (rect.width > 0 && rect.height > 0 && rect.y < window.innerHeight / 2 && rect.x > rightMostX) {
-                                    rightMostX = rect.x;
-                                    pubBtn = b;
-                                }
-                            }
-                        }
-
-                        if (pubBtn) {
-                            pubBtn.click();
-                            return { success: true };
-                        }
-
-                        return { success: false, reason: 'Publish button not found' };
+                        return true;
                     }, { secIndex: secIdx, message: customMessage });
 
-                    // 画像ファイルのアップロード処理（ファイルが存在する場合）
+                    if (!isSuccess) {
+                         console.log(`⚠️ セクション ${secIdx + 1} の追加ボタンが見つかりませんでした。スキップします。`);
+                         continue;
+                    }
+
+                    // 画像ファイルのアップロード処理（待機時間を大幅に増加）
                     if (fs.existsSync(imagePath)) {
                         try {
                             console.log("🖼️ 画像を添付中...");
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(2500);
+                                // ★画像の読み込みとプレビュー生成を確実に待つ
+                                await page.waitForTimeout(5000); 
                             } else {
                                 const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
                                 if (attachBtn) {
@@ -193,7 +163,8 @@ async function main() {
                                     const lateInput = await page.$('input[type="file"]');
                                     if (lateInput) {
                                         await lateInput.setInputFiles(imagePath);
-                                        await page.waitForTimeout(2500);
+                                        // ★画像の読み込みとプレビュー生成を確実に待つ
+                                        await page.waitForTimeout(5000);
                                     }
                                 }
                             }
@@ -202,14 +173,50 @@ async function main() {
                         }
                     }
 
-                    if (result.success) {
-                        console.log(`🚀 セクション ${secIdx + 1} の投稿を送信しました！`);
-                    } else {
-                        console.log(`⚠️ ボタン直接押下失敗、ショートカットを試します (${result.reason})`);
-                        await page.keyboard.press("Control+Enter");
-                    }
+                    // 送信処理（ボタンクリックとショートカットの両方を確実に実行）
+                    console.log("📤 投稿を送信（公開）します...");
+                    
+                    const clickedPublish = await page.evaluate(async () => {
+                         const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                         let pubBtn = null;
+                         for (let b of buttons) {
+                             const t = (b.innerText || '').trim();
+                             const a = (b.getAttribute('aria-label') || '').toLowerCase();
+                             const testid = (b.getAttribute('data-testid') || '').toLowerCase();
+                             const rect = b.getBoundingClientRect();
+                             // 右側にあるボタンを優先的に探す
+                             if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
+                                 if (
+                                     t.includes('公開') || t.includes('Publish') || t.includes('送信') ||
+                                     a.includes('publish') || a.includes('submit') || a.includes('send') ||
+                                     testid.includes('publish') || testid.includes('submit') ||
+                                     b.className.includes('primary') || b.className.includes('submit')
+                                 ) {
+                                     pubBtn = b;
+                                     break;
+                                 }
+                             }
+                         }
 
-                    await page.waitForTimeout(3500);
+                         if (pubBtn) {
+                             pubBtn.click();
+                             return true;
+                         }
+                         return false;
+                    });
+
+                    // ボタンが見つからなかった場合、または確実を期すためにショートカットキーを送信
+                    if (!clickedPublish) {
+                        console.log("⚠️ 公開ボタンが見つからなかったため、Ctrl+Enterで送信を試みます。");
+                    }
+                    
+                    // 念のため、ショートカットキーでも送信シグナルを送る
+                    await page.keyboard.press("Control+Enter");
+                    await page.keyboard.press("Meta+Enter"); // Mac用
+
+                    // 投稿がボードに反映されるのを待つ
+                    await page.waitForTimeout(4000);
+                    console.log(`🚀 セクション ${secIdx + 1} の処理が完了しました！`);
                 }
 
                 // 3. コメント巡回・送信処理

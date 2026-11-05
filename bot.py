@@ -13,11 +13,11 @@ TOPIC_MESSAGE = os.getenv("TOPIC_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さー�
 COMMENT_MESSAGE = os.getenv("COMMENT_MESSAGE", os.getenv("CUSTOM_MESSAGE", "さーもん万歳！！"))
 
 try:
-    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "1")))
+    TOTAL_ROUNDS = int(os.getenv("ROUNDS", os.getenv("REPEAT_COUNT", "2")))
 except ValueError:
     TOTAL_ROUNDS = 2
 
-IMAGE_PATH = os.path.join(os.path.dirname(__file__), "_______.gif")
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), "a62e0a5b (1).gif")
 TARGET_BOARD_URL = os.getenv("TARGET_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
@@ -98,7 +98,6 @@ def main():
                 args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
             )
             
-            # 💡 【画面録画の有効化】録画保存先を指定してブラウザコンテキストを作成
             video_dir = "videos"
             os.makedirs(video_dir, exist_ok=True)
             context = browser.new_context(
@@ -121,7 +120,6 @@ def main():
                 for round_num in range(1, TOTAL_ROUNDS + 1):
                     print(f"\n--- ラウンド {round_num} / {TOTAL_ROUNDS} ---")
 
-                    # セクション数をカウント
                     total_sections = page.evaluate("""() => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
@@ -137,7 +135,6 @@ def main():
                     }""")
                     print(f"📝 検出したセクション数: {total_sections}")
 
-                    # 投稿作成
                     for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中...")
                         try:
@@ -193,22 +190,34 @@ def main():
                                     file_inputs[-1].set_input_files(IMAGE_PATH)
                                     time.sleep(2.0)
 
-                            published = False
-                            for _ in range(3):
-                                pub_btn = page.query_selector('button:has-text("公開"), button:has-text("Publish"), button[data-testid*="submit"], button[data-testid*="publish"]')
-                                if pub_btn and pub_btn.is_visible():
-                                    try:
-                                        pub_btn.click(force=True)
-                                        published = True
-                                        break
-                                    except Exception:
-                                        pass
-                                time.sleep(0.5)
+                            # 💡 【強化】Padletの投稿公開ボタンを確実にクリックするJavaScript処理
+                            published = page.evaluate("""() => {
+                                // Padletの公開ボタン（Publish / 公開 / 送信 / チェックマーク等のボタンやアイコン）を探索
+                                const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                                for (let btn of buttons) {
+                                    const text = (btn.innerText || '').trim();
+                                    const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                                    const testid = (btn.getAttribute('data-testid') || '').toLowerCase();
+                                    if (
+                                        text.includes('公開') || text.includes('Publish') || 
+                                        aria.includes('publish') || aria.includes('submit') || aria.includes('送信') ||
+                                        testid.includes('publish') || testid.includes('submit')
+                                    ) {
+                                        const rect = btn.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0) {
+                                            btn.click();
+                                            return true;
+                                        }
+                                    }
+                                }
+                                return false;
+                            }""")
 
                             if not published:
+                                # ボタンが見つからない場合は強力なショートカットキーで送信
                                 page.keyboard.press("Control+Enter")
-                                time.sleep(0.5)
-                                page.keyboard.press("Enter")
+                                time.sleep(0.3)
+                                page.keyboard.press("Meta+Enter") # Mac環境考慮
 
                             print(f"🚀 セクション {sec_idx + 1} の投稿を送信しました！")
                             time.sleep(3.0)
@@ -245,17 +254,22 @@ def main():
                                 editor.fill(COMMENT_MESSAGE)
                                 time.sleep(0.6)
                                 
-                                comment_submitted = False
-                                for c_btn_sel in ['button:has-text("コメント")', 'button:has-text("Comment")', 'button[type="submit"]', 'button[aria-label*="Send"]', 'button[aria-label*="送信"]']:
-                                    c_btn = page.query_selector(c_btn_sel)
-                                    if c_btn and c_btn.is_visible():
-                                        try:
-                                            c_btn.click(force=True)
-                                            comment_submitted = True
-                                            break
-                                        except Exception:
-                                            pass
-                                
+                                comment_submitted = page.evaluate("""() => {
+                                    const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                                    for (let btn of buttons) {
+                                        const text = (btn.innerText || '').trim();
+                                        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                                        if (text.includes('コメント') || text.includes('Comment') || aria.includes('send') || aria.includes('送信')) {
+                                            const rect = btn.getBoundingClientRect();
+                                            if (rect.width > 0 && rect.height > 0) {
+                                                btn.click();
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                    return false;
+                                }""")
+
                                 if not comment_submitted:
                                     page.keyboard.press("Control+Enter")
                                     time.sleep(0.3)
@@ -275,11 +289,8 @@ def main():
                         time.sleep(5)
 
                 success = True
-                
-                # 録画ファイルを確実に保存させるためにコンテキストを閉じる
                 context.close()
                 browser.close()
-                
                 send_discord_notification(TARGET_BOARD_URL, account_num)
                 break
 

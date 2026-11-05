@@ -7,8 +7,8 @@ async function main() {
     const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
     const authJsonsEnv = process.env.AUTH_JSONS;
     
-    // 💡 2回繰り返す設定
-    const totalRounds = 10;
+    // 💡 安定動作のため、まずは 3 ラウンドに設定（必要に応じて 10 に戻せます）
+    const totalRounds = 3;
 
     if (!targetUrl || !authJsonsEnv) {
         console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");
@@ -92,7 +92,7 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿作成・画像添付・送信
+                // 2. 各セクションへの投稿作成・画像添付・送信（1つずつ確実に完了させる）
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
                     console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
 
@@ -152,7 +152,7 @@ async function main() {
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(4000); 
+                                await page.waitForTimeout(5000); // プレビュー生成をしっかり待つ
                             } else {
                                 const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
                                 if (attachBtn) {
@@ -161,7 +161,7 @@ async function main() {
                                     const lateInput = await page.$('input[type="file"]');
                                     if (lateInput) {
                                         await lateInput.setInputFiles(imagePath);
-                                        await page.waitForTimeout(4000);
+                                        await page.waitForTimeout(5000);
                                     }
                                 }
                             }
@@ -188,18 +188,19 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    await page.waitForTimeout(3000);
-                    console.log(`🚀 セクション ${secIdx + 1} の処理が完了しました！`);
+                    // 投稿がサーバーに確実に反映されるまでしっかりウェイトを挟む
+                    await page.waitForTimeout(4000);
+                    console.log(`🚀 セクション ${secIdx + 1} の投稿が完了しました！`);
                 }
 
-                // 3. すべての投稿へのコメント巡回・送信処理（強化版）
+                // 3. すべての投稿へのコメント巡回・送信処理
                 console.log("⚡ すべての投稿へのコメント巡回を実行中...");
+                await page.waitForTimeout(3000); // コメント対象が出現するのを待つ
                 
                 const commentCount = await page.evaluate(async ({ commentMsg }) => {
                     let totalCommented = 0;
                     
-                    // ボード上のすべての投稿カードまたはコメント追加ボタンを探す
-                    for (let attempt = 0; attempt < 50; attempt++) {
+                    for (let attempt = 0; attempt < 30; attempt++) {
                         const allElements = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                         let commentBtn = null;
 
@@ -208,34 +209,28 @@ async function main() {
                             const aria = (el.getAttribute('aria-label') || '').toLowerCase();
                             const rect = el.getBoundingClientRect();
 
-                            // まだコメントが追加されていない、または「コメントを追加」「Add comment」となっているボタンを探索
                             if (
                                 rect.width > 0 && rect.height > 0 &&
                                 (text.includes('Add comment') || text.includes('コメントを追加') || text.includes('コメントを書く') || aria.includes('comment'))
                             ) {
-                                // 既に処理したボタンやゴミ要素を避けるため、特定のクラスや状態をチェック
                                 commentBtn = el;
                                 break;
                             }
                         }
 
                         if (!commentBtn) {
-                            break; // すべてのコメントボタンを押し終えたら終了
+                            break;
                         }
 
-                        // コメントボタンをクリックして入力欄を展開
                         commentBtn.click();
                         await new Promise(r => setTimeout(r, 1200));
 
-                        // 入力エディタ（テキストエリア）を探す
                         const editor = document.querySelector('div[contenteditable="true"], textarea');
                         if (!editor) {
-                            // 開けなかった場合はEscapeで閉じて次へ
                             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
                             break;
                         }
 
-                        // メッセージを入力
                         editor.focus();
                         if (editor.tagName === 'DIV') {
                             editor.innerText = commentMsg;
@@ -245,7 +240,6 @@ async function main() {
                         editor.dispatchEvent(new Event('input', { bubbles: true }));
                         await new Promise(r => setTimeout(r, 800));
 
-                        // 送信ボタン（コメントの投稿ボタン）を探してクリック
                         const actionButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                         let sent = false;
                         for (let b of actionButtons) {
@@ -264,7 +258,7 @@ async function main() {
                         }
 
                         totalCommented++;
-                        await new Promise(r => setTimeout(r, 2500)); // 送信完了を待つ
+                        await new Promise(r => setTimeout(r, 2000));
                     }
 
                     return totalCommented;

@@ -126,7 +126,7 @@ async function main() {
                 console.log(`📝 検出されたセクション数: ${sectionCount}`);
 
                 // -------------------------------------------------------------
-                // 1. 各セクションへの投稿処理
+                // 1. 各セクションへの投稿処理（画像添付の確実化）
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
@@ -170,6 +170,7 @@ async function main() {
 
                             await humanDelay(page, 2000, 3000);
 
+                            // タイトルとメッセージを入力
                             const editables = page.locator('div[contenteditable="true"], textarea, input[type="text"]');
                             const editCount = await editables.count();
 
@@ -183,19 +184,31 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
+                            // 🖼️ 画像（GIF）の添付（★アタッチボタン経由でダイアログを確実に開いてからファイルをセット）
                             if (fs.existsSync(imagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
-                                    const fileInput = page.locator('input[type="file"]').first();
+                                    
+                                    // 添付アイコン（画像・ファイル追加ボタン）を探してクリック
+                                    const attachBtn = page.locator('button[aria-label*="attachment"], button[aria-label*="image"], button[aria-label*="file"], button[aria-label*="画像"], button[aria-label*="ファイル"], [data-testid*="attachment"]');
+                                    if (await attachBtn.count() > 0) {
+                                        await attachBtn.first().click();
+                                        await humanDelay(page, 1000, 1500);
+                                    }
+
+                                    // ファイル入力を検知してファイルを流し込む
+                                    const fileInput = page.locator('input[type="file"]').last();
                                     if (await fileInput.count() > 0) {
                                         await fileInput.setInputFiles(imagePath);
-                                        await humanDelay(page, 5000, 7000);
+                                        // アップロードのプレビュー生成をしっかり待つ
+                                        await humanDelay(page, 6000, 8000);
                                     }
                                 } catch (imgErr) {
                                     console.log(`⚠️ 画像添付エラー: ${imgErr.message}`);
                                 }
                             }
 
+                            // 投稿公開ボタンをクリック
                             console.log("📤 投稿を公開します...");
                             const isPublished = await page.evaluate(() => {
                                 const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
@@ -223,12 +236,11 @@ async function main() {
                 }
 
                 // -------------------------------------------------------------
-                // 2. コメント巡回処理（ロケーター＆直接Enter操作で確実送信）
+                // 2. コメント巡回処理
                 // -------------------------------------------------------------
                 if (ENABLE_COMMENT) {
                     console.log("⚡ 全投稿への2回連続コメント巡回を開始します...");
 
-                    // 画面上の全「コメント追加」トリガーを取得
                     const commentTriggers = page.locator('button, [role="button"]').filter({
                         hasText: /Add comment|コメントを追加|コメントを書く/i
                     });
@@ -247,22 +259,19 @@ async function main() {
                         if (await trigger.isVisible()) {
                             await trigger.scrollIntoViewIfNeeded();
                             await trigger.click();
-                            await humanDelay(page, 1000, 2000);
+                            await humanDelay(page, 1500, 2500);
 
-                            // 各投稿へ2回送信
                             for (let cTimes = 1; cTimes <= 2; cTimes++) {
                                 const inputArea = page.locator('div[contenteditable="true"], textarea').last();
 
                                 if (await inputArea.isVisible()) {
                                     console.log(`💬 投稿 #${i + 1} へコメント送信中 (${cTimes}/2 回目)...`);
                                     await humanType(page, inputArea, CUSTOM_MESSAGE);
+                                    await humanDelay(page, 1000, 1500);
+
+                                    await page.keyboard.press("Enter");
                                     await humanDelay(page, 800, 1200);
 
-                                    // Enterキーでの直接送信を最優先で実行
-                                    await page.keyboard.press("Enter");
-                                    await humanDelay(page, 500, 1000);
-
-                                    // 送信ボタンが残っている場合のクリックフォールバック
                                     const submitBtn = page.locator('button[aria-label*="send"], button[aria-label*="送信"], button:has-text("Send")').last();
                                     if (await submitBtn.isVisible()) {
                                         await submitBtn.click();

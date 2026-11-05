@@ -189,7 +189,7 @@ async function main() {
                     let totalCommented = 0;
                     
                     for (let attempt = 0; attempt < 60; attempt++) {
-                        const allElements = Array.from(document.querySelectorAll('button, [role="button'], div, span'));
+                        const allElements = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                         let commentBtn = null;
 
                         for (let el of allElements) {

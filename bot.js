@@ -4,7 +4,6 @@ const path = require('path');
 
 const TARGET_URL = process.env.TARGET_URL;
 const TITLE_MESSAGE = process.env.TITLE_MESSAGE || "さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado";
-// 本文にメッセージと画像URLを統合して自動でプレビュー表示させるようにします
 const IMAGE_URL = process.env.IMAGE_URL || "https://videotourl.com/images/1793876226932-8e8e55c2-70b5-480f-a533-84510fa11a81.gif";
 const CUSTOM_MESSAGE = (process.env.CUSTOM_MESSAGE || "お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ") + "\n" + IMAGE_URL;
 
@@ -47,7 +46,7 @@ async function main() {
         process.exit(1);
     }
 
-    console.log("=== 🚀 Padlet Bot 起動パラメータ (完全自動投稿版) ===");
+    console.log("=== 🚀 Padlet Bot 起動パラメータ (録画機能付き) ===");
     console.log(`・ターゲットURL: ${TARGET_URL}`);
     console.log(`・画像URL: ${IMAGE_URL}`);
     console.log(`・実行ラウンド数: ${TOTAL_ROUNDS}`);
@@ -82,9 +81,15 @@ async function main() {
 
     for (let index = 0; index < accountCookieLists.length; index++) {
         const accountNum = index + 1;
+        
+        // 🎥 録画設定をコンテキストに追加（videos/ ディレクトリにwebmとして保存）
         const contextOptions = {
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-            viewport: { width: 1920, height: 1080 }
+            viewport: { width: 1920, height: 1080 },
+            recordVideo: {
+                dir: path.join(process.cwd(), 'videos/'),
+                size: { width: 1920, height: 1080 }
+            }
         };
 
         if (!USE_GUEST && accountCookieLists[index].length > 0) {
@@ -158,7 +163,7 @@ async function main() {
                                 is429Hit = false;
                             }
 
-                            // セクションの「＋」ボタンを毎回確実に再スキャンしてクリック
+                            // セクションの「＋」ボタンを確実に再スキャンしてクリック
                             const clicked = await page.evaluate((sIdx) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -200,7 +205,7 @@ async function main() {
 
                             if (editCount > 1) {
                                 await humanType(page, editables.nth(1), CUSTOM_MESSAGE);
-                                await humanDelay(page, 1500, 2000); // プレビュー生成の自動読み込みを待つ
+                                await humanDelay(page, 1500, 2000);
                             }
 
                             // 投稿公開ボタンをクリック
@@ -288,7 +293,9 @@ async function main() {
                 }
             }
 
+            // 録画ファイルを確定させるためにコンテキストを閉じる
             await context.close();
+            console.log(`🎥 実行の録画が ` + path.join(process.cwd(), 'videos/') + ` に保存されました。`);
             console.log(`✅ アカウント #${accountNum} の処理が終了しました。`);
             break;
 

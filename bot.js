@@ -54,10 +54,16 @@ async function main() {
 
         const page = await context.newPage();
 
+        page.on('response', response => {
+            if (response.status() >= 400 && response.url().includes('padlet')) {
+                console.log(`⚠️ API警告: ${response.status()} - ${response.url()}`);
+            }
+        });
+
         try {
             console.log("ボードにアクセス中...");
             await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(5000);
+            await page.waitForTimeout(4000);
 
             if (page.url().includes("login") || page.url().includes("verify")) {
                 throw new Error("ログインセッションが無効です。");
@@ -68,7 +74,7 @@ async function main() {
             for (let roundNum = 1; roundNum <= totalRounds; roundNum++) {
                 console.log(`\n--- ラウンド ${roundNum} / ${totalRounds} ---`);
 
-                // 1. 各セクションの「＋」ボタン数を取得
+                // 1. セクション数を検出
                 const totalSections = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
@@ -86,7 +92,7 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿＆画像添付ループ
+                // 2. 各セクションへの投稿作成・画像添付・送信
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
                     console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
 
@@ -109,9 +115,8 @@ async function main() {
 
                         if (!targetBtn) return false;
                         targetBtn.click();
-                        await new Promise(r => setTimeout(r, 1200));
+                        await new Promise(r => setTimeout(r, 1000));
 
-                        // タイトルとメッセージの入力
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
                         if (editables.length > 0) {
                             const titleEl = editables[0];
@@ -130,12 +135,9 @@ async function main() {
                         return true;
                     }, { secIndex: secIdx, message: customMessage });
 
-                    if (!isSuccess) {
-                        console.log(`⚠️ セクション ${secIdx + 1} の追加ボタンが見つかりませんでした。スキップします。`);
-                        continue;
-                    }
+                    if (!isSuccess) continue;
 
-                    // 画像（GIF）ファイルの添付
+                    // 画像（GIF）のアップロード処理
                     if (fs.existsSync(imagePath)) {
                         try {
                             console.log("🖼️ 画像を添付中...");
@@ -156,12 +158,11 @@ async function main() {
                                 }
                             }
                         } catch (imgErr) {
-                            console.log(`⚠️ 画像アップロードスキップ: ${imgErr.message}`);
+                            // ignore
                         }
                     }
 
-                    // 投稿を送信（公開）
-                    console.log("📤 投稿を送信（公開）します...");
+                    // 投稿を公開
                     await page.evaluate(async () => {
                         const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
                         for (let b of buttons) {
@@ -178,17 +179,14 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    await page.waitForTimeout(2000);
-                    console.log(`🚀 セクション ${secIdx + 1} の処理が完了しました！`);
+                    await page.waitForTimeout(1800);
                 }
 
-                // 3. すべての投稿へのコメント巡回（各投稿に2回連続コメント）
-                console.log("⚡ すべての投稿へのコメント巡回を実行中...");
-                
+                // 3. すべての投稿へのコメント巡回処理（★各投稿に対して2回連続コメントを送信）
+                console.log("⚡ すべての投稿へのコメント巡回（2回送信）を実行中...");
                 const commentCount = await page.evaluate(async ({ commentMsg }) => {
                     let totalCommented = 0;
-                    
-                    for (let attempt = 0; attempt < 60; attempt++) {
+                    for (let attempt = 0; attempt < 50; attempt++) {
                         const allElements = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                         let commentBtn = null;
 
@@ -197,20 +195,15 @@ async function main() {
                             const aria = (el.getAttribute('aria-label') || '').toLowerCase();
                             const rect = el.getBoundingClientRect();
 
-                            if (
-                                rect.width > 0 && rect.height > 0 &&
-                                (text.includes('Add comment') || text.includes('コメントを追加') || text.includes('コメントを書く') || aria.includes('comment'))
-                            ) {
+                            if (rect.width > 0 && rect.height > 0 && (text.includes('Add comment') || text.includes('コメントを追加') || text.includes('コメントを書く') || aria.includes('comment'))) {
                                 commentBtn = el;
                                 break;
                             }
                         }
 
-                        if (!commentBtn) {
-                            break;
-                        }
+                        if (!commentBtn) break;
 
-                        // 各投稿に対して2回連続でコメント送信
+                        // 各投稿に対して2回連続でコメントを送信
                         for (let cTimes = 0; cTimes < 2; cTimes++) {
                             try {
                                 commentBtn.click();
@@ -225,7 +218,7 @@ async function main() {
                             editor.focus();
                             editor.innerText = commentMsg;
                             editor.dispatchEvent(new Event('input', { bubbles: true }));
-                            await new Promise(r => setTimeout(r, 500));
+                            await new Promise(r => setTimeout(r, 600));
 
                             const actionButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                             let sent = false;
@@ -245,17 +238,15 @@ async function main() {
                             }
 
                             totalCommented++;
-                            await new Promise(r => setTimeout(r, 1200));
+                            await new Promise(r => setTimeout(r, 1500));
                         }
                     }
-
                     return totalCommented;
                 }, { commentMsg: customMessage });
 
-                console.log(`✨ コメント巡回が完了しました。合計 ${commentCount} 件のコメントを送信しました！`);
+                console.log(`✨ ラウンド ${roundNum} 完了（合計 ${commentCount} 件のコメントを送信しました）`);
 
                 if (roundNum < totalRounds) {
-                    console.log("🔄 次のラウンドへ向けてボードを再読み込みします...");
                     await page.reload({ waitUntil: "domcontentloaded" });
                     await page.waitForTimeout(4000);
                 }

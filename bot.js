@@ -26,7 +26,7 @@ async function main() {
         process.exit(1);
     }
 
-    const imagePath = path.join(__dirname, "a62e0a5b (1).gif");
+    const imagePath = path.join(__dirname, "_______.gif");
 
     const browser = await chromium.launch({
         headless: true,
@@ -178,17 +178,32 @@ async function main() {
                         return { success: false, reason: 'Publish button not found' };
                     }, { secIndex: secIdx, message: customMessage });
 
-                    // 画像ファイルのアップロード処理（ファイルが存在する場合）
+// 画像ファイルのアップロード処理（ファイルが存在する場合）
                     if (fs.existsSync(imagePath)) {
                         try {
-                            const fileInput = await page.$('input[type="file"]');
-                            if (fileInput) {
-                                await fileInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(2000);
+                            console.log("🖼️ 画像を添付中...");
+                            // Padletの画像アップロードボタン（アイコンなど）を探してクリック、または直接ファイル入力を操作
+                            const uploadInput = await page.$('input[type="file"]');
+                            if (uploadInput) {
+                                await uploadInput.setInputFiles(imagePath);
+                                await page.waitForTimeout(2500);
+                            } else {
+                                // ボタンをクリックしてファイル入力を出現させるフォールバック
+                                const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
+                                if (attachBtn) {
+                                    await attachBtn.click();
+                                    await page.waitForTimeout(1000);
+                                    const lateInput = await page.$('input[type="file"]');
+                                    if (lateInput) {
+                                        await lateInput.setInputFiles(imagePath);
+                                        await page.waitForTimeout(2500);
+                                    }
+                                }
                             }
                         } catch (imgErr) {
                             console.log(`⚠️ 画像アップロードスキップ: ${imgErr.message}`);
                         }
+                    }
                     }
 
                     if (result.success) {

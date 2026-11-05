@@ -3,10 +3,14 @@ name: Run Padlet Bot
 on:
   workflow_dispatch:
     inputs:
+      target_url:
+        description: '対象のPadlet URL'
+        required: true
+        default: 'https://padlet.com/kamisngi/daiki-o1ocnzud4hb082q'
       total_rounds:
         description: '実行ラウンド数'
         required: true
-        default: '1'
+        default: '2'
       enable_post:
         description: '投稿を行うか (true/false)'
         required: true
@@ -48,7 +52,7 @@ jobs:
 
       - name: Run Bot
         env:
-          TARGET_URL: ${{ secrets.TARGET_URL }}
+          TARGET_URL: ${{ github.event.inputs.target_url }}
           AUTH_JSONS: ${{ secrets.AUTH_JSONS }}
           TOTAL_ROUNDS: ${{ github.event.inputs.total_rounds }}
           ENABLE_POST: ${{ github.event.inputs.enable_post }}

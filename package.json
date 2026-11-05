@@ -1,13 +1,12 @@
 {
   "name": "padlet-auto-tools",
   "version": "1.0.0",
-  "description": "Padlet auto commenter bot with Gemini API and Playwright",
+  "description": "Padlet automated posting and commenting tool",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "@google/genai": "latest",
     "playwright": "^1.40.0"
   }
 }

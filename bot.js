@@ -206,27 +206,25 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像（GIF）の添付処理（★アタッチボタンクリック後にファイル入力要素を確実に出現させて結びつける）
+                            // 🖼️ 画像（GIF）の添付処理
                             if (fs.existsSync(imagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
-                                    // Padletのファイル添付・画像アイコンを包括的に探してクリック
                                     const attachBtn = page.locator('button[aria-label*="attachment"], button[aria-label*="image"], button[aria-label*="file"], button[aria-label*="画像"], button[aria-label*="ファイル"], [data-testid*="attachment"], [data-testid*="picker"]');
                                     if (await attachBtn.count() > 0) {
                                         await attachBtn.first().click();
                                         await humanDelay(page, 1500, 2500);
                                     }
 
-                                    // ファイル選択の input がDOMに現れるのを最大5秒待機してセット
                                     const fileInput = page.locator('input[type="file"]').last();
                                     await fileInput.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
                                     
                                     if (await fileInput.count() > 0) {
                                         await fileInput.setInputFiles(imagePath);
                                         console.log("📁 画像ファイルの紐付け成功。プレビュー生成を待機中...");
-                                        await humanDelay(page, 6000, 8000); // アップロードとプレビュー表示待ち
+                                        await humanDelay(page, 6000, 8000);
                                     } else {
-                                        console.log("⚠️ ファイル入力要素（input[type="file"]）が見つかりませんでした。");
+                                        console.log('⚠️ ファイル入力要素（input[type="file"]）が見つかりませんでした。');
                                     }
                                 } catch (imgErr) {
                                     console.log(`⚠️ 画像添付エラー: ${imgErr.message}`);

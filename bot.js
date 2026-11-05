@@ -26,7 +26,7 @@ async function main() {
         process.exit(1);
     }
 
-    const imagePath = path.join(__dirname, "a62e0a5b (1).gif");
+    const imagePath = path.join(__dirname, "_______.gif");
 
     const browser = await chromium.launch({
         headless: true,

@@ -156,6 +156,7 @@ async function main() {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
                 await clearOverlays(page);
 
+                // セクションの総数を最初にしっかりと取得
                 const totalSections = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
@@ -174,7 +175,7 @@ async function main() {
                 console.log(`📝 検出されたセクション数 (全件対象): ${sectionCount}`);
 
                 // -------------------------------------------------------------
-                // 1. 全セクションへの投稿処理（画像付き）
+                // 1. 全セクションへの投稿処理（2回連続）
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
@@ -190,6 +191,7 @@ async function main() {
                                 is429Hit = false;
                             }
 
+                            // セクションの「＋」ボタンを確実に再取得してクリック
                             const clicked = await page.evaluate((sIdx) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -217,7 +219,7 @@ async function main() {
                                 continue;
                             }
 
-                            await humanDelay(page, 2000, 3000);
+                            await humanDelay(page, 2500, 3500);
                             await clearOverlays(page);
 
                             // タイトルとメッセージを入力
@@ -234,7 +236,7 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像の添付処理（★アップロード完了を確実に待機）
+                            // 🖼️ 画像の添付処理
                             if (fs.existsSync(tempImagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
@@ -251,11 +253,7 @@ async function main() {
                                     if (await fileInput.count() > 0) {
                                         await fileInput.setInputFiles(tempImagePath);
                                         console.log("📁 画像ファイルの紐付け成功。プレビュー生成とアップロードを待機中...");
-                                        
-                                        // ★ アップロード・プレビューが完了するまでしっかりと待機時間を長め（10秒〜12秒）に確保
-                                        await humanDelay(page, 10000, 12000);
-                                    } else {
-                                        console.log("⚠️ ファイル入力要素（input[type='file']）が見つかりませんでした。");
+                                        await humanDelay(page, 8000, 10000); // 確実なアップロード待ち
                                     }
                                 } catch (imgErr) {
                                     console.log(`⚠️ 画像添付エラー: ${imgErr.message}`);

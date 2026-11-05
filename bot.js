@@ -26,7 +26,7 @@ async function main() {
         process.exit(1);
     }
 
-    const imagePath = path.join(__dirname, "_______.gif");
+    const imagePath = path.join(__dirname, "a62e0a5b (1).gif");
 
     const browser = await chromium.launch({
         headless: true,
@@ -58,7 +58,6 @@ async function main() {
             recordVideoSize: { width: 1280, height: 720 }
         });
 
-        // 修正箇所: new_page() から newPage() に変更
         const page = await context.newPage();
 
         try {
@@ -178,17 +177,15 @@ async function main() {
                         return { success: false, reason: 'Publish button not found' };
                     }, { secIndex: secIdx, message: customMessage });
 
-// 画像ファイルのアップロード処理（ファイルが存在する場合）
+                    // 画像ファイルのアップロード処理（ファイルが存在する場合）
                     if (fs.existsSync(imagePath)) {
                         try {
                             console.log("🖼️ 画像を添付中...");
-                            // Padletの画像アップロードボタン（アイコンなど）を探してクリック、または直接ファイル入力を操作
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
                                 await page.waitForTimeout(2500);
                             } else {
-                                // ボタンをクリックしてファイル入力を出現させるフォールバック
                                 const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
                                 if (attachBtn) {
                                     await attachBtn.click();
@@ -203,7 +200,6 @@ async function main() {
                         } catch (imgErr) {
                             console.log(`⚠️ 画像アップロードスキップ: ${imgErr.message}`);
                         }
-                    }
                     }
 
                     if (result.success) {

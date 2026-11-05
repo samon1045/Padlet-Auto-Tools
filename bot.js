@@ -8,7 +8,7 @@ async function main() {
     const authJsonsEnv = process.env.AUTH_JSONS;
     
     // 💡 2回繰り返す設定
-    const totalRounds = 2;
+    const totalRounds = 10;
 
     if (!targetUrl || !authJsonsEnv) {
         console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");
@@ -26,7 +26,7 @@ async function main() {
         process.exit(1);
     }
 
-    const imagePath = path.join(__dirname, "a62e0a5b (1).gif");
+    const imagePath = path.join(__dirname, "_______.gif");
 
     const browser = await chromium.launch({
         headless: true,

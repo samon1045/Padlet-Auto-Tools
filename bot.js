@@ -54,7 +54,6 @@ async function main() {
 
         const page = await context.newPage();
 
-        // APIのエラー（403, 429など）を監視
         page.on('response', response => {
             if (response.status() >= 400 && response.url().includes('padlet')) {
                 console.log(`⚠️ API警告: ${response.status()} - ${response.url()}`);
@@ -116,9 +115,8 @@ async function main() {
 
                         if (!targetBtn) return false;
                         targetBtn.click();
-                        await new Promise(r => setTimeout(r, 800));
+                        await new Promise(r => setTimeout(r, 1000)); // ウェイ時間を微増
 
-                        // タイトルと本文の入力
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
                         if (editables.length > 0) {
                             const titleEl = editables[0];
@@ -133,7 +131,7 @@ async function main() {
                             bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
                         }
 
-                        await new Promise(r => setTimeout(r, 400));
+                        await new Promise(r => setTimeout(r, 600));
                         return true;
                     }, { secIndex: secIdx, message: customMessage });
 
@@ -146,21 +144,21 @@ async function main() {
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(1500);
+                                await page.waitForTimeout(2500); // 画像読み込みを少し長めに待つ
                             } else {
                                 const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
                                 if (attachBtn) {
                                     await attachBtn.click();
-                                    await page.waitForTimeout(500);
+                                    await page.waitForTimeout(800);
                                     const lateInput = await page.$('input[type="file"]');
                                     if (lateInput) {
                                         await lateInput.setInputFiles(imagePath);
-                                        await page.waitForTimeout(1500);
+                                        await page.waitForTimeout(2500);
                                     }
                                 }
                             }
                         } catch (imgErr) {
-                            // 失敗時はスキップして続行
+                            // ignore
                         }
                     }
 
@@ -181,7 +179,8 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    await page.waitForTimeout(1000);
+                    // ★429エラーを防ぐため、投稿と投稿の間に1.8秒のインターバルを挿入
+                    await page.waitForTimeout(1800);
                 }
 
                 // 3. すべての投稿へのコメント巡回処理
@@ -206,7 +205,7 @@ async function main() {
                         if (!commentBtn) break;
 
                         commentBtn.click();
-                        await new Promise(r => setTimeout(r, 600));
+                        await new Promise(r => setTimeout(r, 800));
 
                         const editor = document.querySelector('div[contenteditable="true"], textarea');
                         if (!editor) {
@@ -217,7 +216,7 @@ async function main() {
                         editor.focus();
                         editor.innerText = commentMsg;
                         editor.dispatchEvent(new Event('input', { bubbles: true }));
-                        await new Promise(r => setTimeout(r, 400));
+                        await new Promise(r => setTimeout(r, 600));
 
                         const actionButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                         let sent = false;
@@ -237,7 +236,8 @@ async function main() {
                         }
 
                         totalCommented++;
-                        await new Promise(r => setTimeout(r, 800));
+                        // ★コメント送信間隔も少し空けて429を回避
+                        await new Promise(r => setTimeout(r, 1500));
                     }
                     return totalCommented;
                 }, { commentMsg: customMessage });
@@ -245,8 +245,9 @@ async function main() {
                 console.log(`✨ ラウンド ${roundNum} 完了（コメント ${commentCount} 件）`);
 
                 if (roundNum < totalRounds) {
+                    // ラウンドごとのインターバルを少し長めに取り、サーバーへの負荷を緩和
                     await page.reload({ waitUntil: "domcontentloaded" });
-                    await page.waitForTimeout(2000);
+                    await page.waitForTimeout(4000);
                 }
             }
 

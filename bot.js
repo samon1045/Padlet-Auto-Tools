@@ -2,23 +2,10 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-// 人間らしいランダムな待ち時間を生成する関数（Bot対策の核心）
+// 人間らしいランダムな待ち時間を生成する関数
 async function humanDelay(page, min = 1500, max = 3500) {
     const delay = Math.floor(Math.random() * (max - min + 1)) + min;
     await page.waitForTimeout(delay);
-}
-
-// 人間らしいタイピング風入力関数（一文字ずつ打ち込むことでBot検知を回避）
-async function humanType(page, selector, text) {
-    const element = await page.locator(selector).first();
-    await element.click();
-    await humanDelay(page, 400, 800);
-    
-    // 一文字ずつランダムな速度でタイピング
-    for (let char of text) {
-        await page.keyboard.type(char);
-        await page.waitForTimeout(Math.floor(Math.random() * 50) + 20);
-    }
 }
 
 async function main() {
@@ -46,7 +33,6 @@ async function main() {
 
     const imagePath = path.join(__dirname, "_______.gif");
 
-    // Bot検知を避けるためのブラウザ起動引数（ヘッドレス特有のフラグを隠蔽）
     const browser = await chromium.launch({
         headless: true,
         args: [
@@ -54,7 +40,7 @@ async function main() {
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
-            "--disable-blink-features=AutomationControlled", // ★Bot判定フラグを隠す最重要設定
+            "--disable-blink-features=AutomationControlled",
             "--window-size=1920,1080"
         ]
     });
@@ -75,7 +61,7 @@ async function main() {
 
         const context = await browser.newContext({
             storageState: authFile,
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36", // 本物のブラウザのUAに偽装
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             viewport: { width: 1920, height: 1080 },
             recordVideoDir: "videos",
             recordVideoSize: { width: 1280, height: 720 }
@@ -83,7 +69,6 @@ async function main() {
 
         const page = await context.newPage();
 
-        // navigator.webdriver を隠してBot判定を回避
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
@@ -138,7 +123,6 @@ async function main() {
                         isRateLimited = false;
                     }
 
-                    // 「＋」ボタンをマウス移動＆クリック（人間らしい軌跡）
                     const clicked = await page.evaluate(async (secIndex) => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
@@ -168,46 +152,34 @@ async function main() {
 
                     await humanDelay(page, 1200, 2000);
 
-                    // メッセージ入力を人間らしく実行
+                    // メッセージ入力
                     try {
                         const editables = page.locator('div[contenteditable="true"], textarea');
                         if (await editables.count() > 0) {
                             await editables.first().click();
-                            await page.keyboard.type(customMessage, { delay: 35 }); // 人間のようなタイピング速度
+                            await page.keyboard.type(customMessage, { delay: 30 });
                         }
                     } catch (e) {
                         console.log(`⚠️ 入力スキップ: ${e.message}`);
                     }
 
-                    await humanDelay(page, 1000, 1500);
+                    await humanDelay(page, 800, 1200);
 
-                    // 🖼️ 画像（GIF）ファイルの添付処理（復活）
+                    // 🖼️ 画像（GIF）ファイルの添付処理（修正済み：first()で曖昧さを解消）
                     if (fs.existsSync(imagePath)) {
                         try {
                             console.log("🖼️ 画像を添付中...");
-                            const uploadInput = page.locator('input[type="file"]');
+                            const uploadInput = page.locator('input[type="file"]').first();
                             if (await uploadInput.count() > 0) {
                                 await uploadInput.setInputFiles(imagePath);
-                                await humanDelay(page, 3000, 4000); // アップロード完了をしっかり待つ
-                            } else {
-                                // 代替の添付ボタンを押してからファイル選択
-                                const attachBtn = page.locator('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"]');
-                                if (await attachBtn.count() > 0) {
-                                    await attachBtn.first().click();
-                                    await humanDelay(page, 800, 1200);
-                                    const lateInput = page.locator('input[type="file"]');
-                                    if (await lateInput.count() > 0) {
-                                        await lateInput.first().setInputFiles(imagePath);
-                                        await humanDelay(page, 3000, 4000);
-                                    }
-                                }
+                                await humanDelay(page, 3000, 4000);
                             }
                         } catch (imgErr) {
                             console.log(`⚠️ 画像アップロードエラー: ${imgErr.message}`);
                         }
                     }
 
-                    // 投稿ボタン（Publish / 公開）を確実にクリック
+                    // 投稿ボタン（Publish / 公開）をクリック
                     console.log("📤 投稿を公開します...");
                     const published = await page.evaluate(() => {
                         const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
@@ -229,8 +201,7 @@ async function main() {
                         await page.keyboard.press("Control+Enter");
                     }
 
-                    // 投稿ごとのインターバル（Bot検知をかわすため 3秒〜5秒 のゆとりを持たせる）
-                    await humanDelay(page, 3000, 5000);
+                    await humanDelay(page, 3000, 4000);
                     console.log(`🚀 セクション ${secIdx + 1} の投稿が完了しました！`);
                 }
 
@@ -255,20 +226,17 @@ async function main() {
 
                     if (!commentBtnInfo) break;
 
-                    // コメントボタンをクリック
                     await page.mouse.click(commentBtnInfo.x, commentBtnInfo.y);
                     await humanDelay(page, 1000, 1500);
 
-                    // 各投稿に対して2回連続でコメント送信
                     for (let cTimes = 0; cTimes < 2; cTimes++) {
                         const editor = page.locator('div[contenteditable="true"], textarea');
                         if (await editor.count() === 0) break;
 
                         await editor.first().click();
-                        await page.keyboard.type(customMessage, { delay: 30 });
+                        await page.keyboard.type(customMessage, { delay: 25 });
                         await humanDelay(page, 800, 1200);
 
-                        // 送信ボタンをクリック
                         const sent = await page.evaluate(() => {
                             const actionButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                             for (let b of actionButtons) {
@@ -287,7 +255,7 @@ async function main() {
                             await page.keyboard.press("Control+Enter");
                         }
 
-                        await humanDelay(page, 2000, 3000); // コメント間の安全なウェイト
+                        await humanDelay(page, 2000, 2500);
                     }
                 }
 

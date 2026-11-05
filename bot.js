@@ -1,8 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
 
 const TARGET_URL = process.env.TARGET_URL;
 const TITLE_MESSAGE = process.env.TITLE_MESSAGE || "さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado";
@@ -39,29 +37,8 @@ async function humanType(page, locator, text) {
     await page.waitForTimeout(300);
     for (let char of text) {
         await page.keyboard.type(char);
-        await page.waitForTimeout(Math.floor(Math.random() * 40) + 20);
+        await page.waitForTimeout(Math.floor(Math.random() * 30) + 10);
     }
-}
-
-// URLから画像を一時ファイルとしてダウンロードする関数
-function downloadImageFromUrl(url, dest) {
-    return new Promise((resolve, reject) => {
-        const client = url.startsWith('https') ? https : http;
-        const file = fs.createWriteStream(dest);
-        
-        client.get(url, (response) => {
-            if (response.statusCode !== 200) {
-                reject(new Error(`画像のダウンロードに失敗しました。ステータスコード: ${response.statusCode}`));
-                return;
-            }
-            response.pipe(file);
-            file.on('finish', () => {
-                file.close(() => resolve(dest));
-            });
-        }).on('error', (err) => {
-            fs.unlink(dest, () => reject(err));
-        });
-    });
 }
 
 async function main() {
@@ -70,7 +47,7 @@ async function main() {
         process.exit(1);
     }
 
-    console.log("=== 🚀 Padlet Bot 起動パラメータ ===");
+    console.log("=== 🚀 Padlet Bot 起動パラメータ (URL添付版) ===");
     console.log(`・ターゲットURL: ${TARGET_URL}`);
     console.log(`・画像URL: ${IMAGE_URL}`);
     console.log(`・実行ラウンド数: ${TOTAL_ROUNDS}`);
@@ -78,15 +55,6 @@ async function main() {
     console.log(`・コメント実行: ${ENABLE_COMMENT}`);
     console.log(`・フリー(ゲスト)アカウント使用: ${USE_GUEST}`);
     console.log("===================================\n");
-
-    const tempImagePath = path.join(process.cwd(), "downloaded_image.gif");
-    try {
-        console.log(`📥 URLから画像をダウンロード中: ${IMAGE_URL}`);
-        await downloadImageFromUrl(IMAGE_URL, tempImagePath);
-        console.log(`✅ 画像のダウンロードが完了しました: ${tempImagePath}`);
-    } catch (err) {
-        console.log(`⚠️ 画像のダウンロードに失敗しました（テキストのみで投稿します）: ${err.message}`);
-    }
 
     let accountCookieLists = [[]];
     if (!USE_GUEST && process.env.AUTH_JSONS) {
@@ -156,8 +124,8 @@ async function main() {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
                 await clearOverlays(page);
 
-                // セクションの総数を最初にしっかりと取得
-                const totalSections = await page.evaluate(() => {
+                // 全セクションの数を確認
+                const sectionCount = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
                     for (let btn of addBtns) {
@@ -171,18 +139,17 @@ async function main() {
                     return count;
                 });
 
-                const sectionCount = Math.max(totalSections, 1);
                 console.log(`📝 検出されたセクション数 (全件対象): ${sectionCount}`);
 
                 // -------------------------------------------------------------
-                // 1. 全セクションへの投稿処理（2回連続）
+                // 1. 全セクションへの投稿処理（2回連続・インデックスズレ防止対策版）
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
 
                     for (let secIdx = 0; secIdx < sectionCount; secIdx++) {
                         for (let postRepeat = 1; postRepeat <= 2; postRepeat++) {
-                            console.log(`➡️ セクション ${secIdx + 1} への投稿 (回数 ${postRepeat}/2)...`);
+                            console.log(`➡️ セクション ${secIdx + 1} / ${sectionCount} への投稿 (回数 ${postRepeat}/2)...`);
                             await clearOverlays(page);
 
                             if (is429Hit) {
@@ -191,7 +158,7 @@ async function main() {
                                 is429Hit = false;
                             }
 
-                            // セクションの「＋」ボタンを確実に再取得してクリック
+                            // セクションの「＋」ボタンをその都度再スキャンして正確にクリック
                             const clicked = await page.evaluate((sIdx) => {
                                 const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                                 let count = 0;
@@ -219,7 +186,7 @@ async function main() {
                                 continue;
                             }
 
-                            await humanDelay(page, 2500, 3500);
+                            await humanDelay(page, 2000, 3000);
                             await clearOverlays(page);
 
                             // タイトルとメッセージを入力
@@ -228,36 +195,39 @@ async function main() {
 
                             if (editCount > 0) {
                                 await humanType(page, editables.nth(0), TITLE_MESSAGE);
-                                await humanDelay(page, 800, 1200);
+                                await humanDelay(page, 600, 1000);
                             }
 
                             if (editCount > 1) {
                                 await humanType(page, editables.nth(1), CUSTOM_MESSAGE);
-                                await humanDelay(page, 800, 1200);
+                                await humanDelay(page, 600, 1000);
                             }
 
-                            // 🖼️ 画像の添付処理
-                            if (fs.existsSync(tempImagePath)) {
-                                try {
-                                    console.log("🖼️ 画像を添付中...");
-                                    const fileUploadBtn = page.locator('button[aria-label*="ファイル"], button[aria-label*="アップロード"], button[aria-label*="file"], button[aria-label*="upload"], [data-testid*="attachment"], [data-testid*="filePicker"]').first();
-                                    
-                                    if (await fileUploadBtn.count() > 0 && await fileUploadBtn.isVisible()) {
-                                        await fileUploadBtn.click();
-                                        await humanDelay(page, 1500, 2500);
-                                    }
+                            // 🔗 対策2：URL（リンク）機能を使って画像を直接貼り付けて埋め込む
+                            try {
+                                console.log("🔗 URLリンク機能を使って画像を添付中...");
+                                // リンク・URL添付アイコンを探索してクリック
+                                const linkIconBtn = page.locator('button[aria-label*="リンク"], button[aria-label*="link"], button[aria-label*="URL"], [data-testid*="link"], [data-testid*="url"]').first();
+                                if (await linkIconBtn.count() > 0 && await linkIconBtn.isVisible()) {
+                                    await linkIconBtn.click();
+                                    await humanDelay(page, 1000, 1500);
 
-                                    const fileInput = page.locator('input[type="file"]').first();
-                                    await fileInput.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
-                                    
-                                    if (await fileInput.count() > 0) {
-                                        await fileInput.setInputFiles(tempImagePath);
-                                        console.log("📁 画像ファイルの紐付け成功。プレビュー生成とアップロードを待機中...");
-                                        await humanDelay(page, 8000, 10000); // 確実なアップロード待ち
+                                    // 出現したURL入力用テキストボックスに画像URLをタイプ
+                                    const urlInputBox = page.locator('input[type="url"], input[placeholder*="URL"], input[placeholder*="https"], input[type="text"]').last();
+                                    if (await urlInputBox.count() > 0) {
+                                        await humanType(page, urlInputBox, IMAGE_URL);
+                                        await humanDelay(page, 1000, 1500);
+
+                                        // リンク追加・確定ボタンがあれば押す
+                                        const addLinkConfirmBtn = page.locator('button:has-text("保存"), button:has-text("追加"), button:has-text("Save"), button:has-text("Add")').last();
+                                        if (await addLinkConfirmBtn.count() > 0 && await addLinkConfirmBtn.isVisible()) {
+                                            await addLinkConfirmBtn.click();
+                                            await humanDelay(page, 3000, 4000);
+                                        }
                                     }
-                                } catch (imgErr) {
-                                    console.log(`⚠️ 画像添付エラー: ${imgErr.message}`);
                                 }
+                            } catch (urlErr) {
+                                console.log(`⚠️ URL添付スキップ/エラー: ${urlErr.message}`);
                             }
 
                             // 投稿公開ボタンをクリック
@@ -282,7 +252,7 @@ async function main() {
                                 await page.keyboard.press("Control+Enter");
                             }
 
-                            await humanDelay(page, 4000, 6000);
+                            await humanDelay(page, 3000, 5000);
                             await clearOverlays(page);
                         }
                     }

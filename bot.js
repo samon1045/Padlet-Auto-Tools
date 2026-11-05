@@ -8,7 +8,7 @@ async function main() {
     const authJsonsEnv = process.env.AUTH_JSONS;
     
     // 💡 2回繰り返す設定
-    const totalRounds = 2;
+    const totalRounds = 10;
 
     if (!targetUrl || !authJsonsEnv) {
         console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");

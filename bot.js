@@ -1,10 +1,15 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 
 const TARGET_URL = process.env.TARGET_URL;
 const TITLE_MESSAGE = process.env.TITLE_MESSAGE || "さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado";
 const CUSTOM_MESSAGE = process.env.CUSTOM_MESSAGE || "お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ";
+
+// ★ ここに取得したい画像のURLを指定してください（必要に応じて変更可能）
+const IMAGE_URL = process.env.IMAGE_URL || "https://videotourl.com/images/1793876226932-8e8e55c2-70b5-480f-a533-84510fa11a81.gif";
 
 const TOTAL_ROUNDS = parseInt(process.env.TOTAL_ROUNDS || "2", 10);
 const ENABLE_POST = process.env.ENABLE_POST !== "false";
@@ -39,20 +44,25 @@ async function humanType(page, locator, text) {
     }
 }
 
-// 実行ディレクトリ内から画像・GIFファイルを自動で探す安全な関数
-function findImageFile() {
-    const targetNames = ["_______.gif", "image.gif", "upload.gif", "img.gif"];
-    for (let name of targetNames) {
-        const p = path.join(process.cwd(), name);
-        if (fs.existsSync(p)) return p;
-    }
-    // ディレクトリ内の最初の.gifファイルを自動検出
-    try {
-        const files = fs.readdirSync(process.cwd());
-        const gifFile = files.find(f => f.endsWith('.gif'));
-        if (gifFile) return path.join(process.cwd(), gifFile);
-    } catch (e) {}
-    return path.join(process.cwd(), "_______.gif");
+// URLから画像を一時ファイルとしてダウンロードする関数
+function downloadImageFromUrl(url, dest) {
+    return new Promise((resolve, reject) => {
+        const client = url.startsWith('https') ? https : http;
+        const file = fs.createWriteStream(dest);
+        
+        client.get(url, (response) => {
+            if (response.statusCode !== 200) {
+                reject(new Error(`画像のダウンロードに失敗しました。ステータスコード: ${response.statusCode}`));
+                return;
+            }
+            response.pipe(file);
+            file.on('finish', () => {
+                file.close(() => resolve(dest));
+            });
+        }).on('error', (err) => {
+            fs.unlink(dest, () => reject(err));
+        });
+    });
 }
 
 async function main() {
@@ -63,17 +73,20 @@ async function main() {
 
     console.log("=== 🚀 Padlet Bot 起動パラメータ ===");
     console.log(`・ターゲットURL: ${TARGET_URL}`);
+    console.log(`・画像URL: ${IMAGE_URL}`);
     console.log(`・実行ラウンド数: ${TOTAL_ROUNDS}`);
     console.log(`・投稿実行: ${ENABLE_POST}`);
     console.log(`・コメント実行: ${ENABLE_COMMENT}`);
     console.log(`・フリー(ゲスト)アカウント使用: ${USE_GUEST}`);
     console.log("===================================\n");
 
-    const imagePath = findImageFile();
-    if (fs.existsSync(imagePath)) {
-        console.log(`✅ 画像ファイルを自動検出しました: ${imagePath}`);
-    } else {
-        console.log(`⚠️ 警告: 画像ファイルが見つかりません（テキストのみで投稿します）: ${imagePath}`);
+    const tempImagePath = path.join(process.cwd(), "downloaded_image.gif");
+    try {
+        console.log(`📥 URLから画像をダウンロード中: ${IMAGE_URL}`);
+        await downloadImageFromUrl(IMAGE_URL, tempImagePath);
+        console.log(`✅ 画像のダウンロードが完了しました: ${tempImagePath}`);
+    } catch (err) {
+        console.log(`⚠️ 画像のダウンロードに失敗しました（テキストのみで投稿します）: ${err.message}`);
     }
 
     let accountCookieLists = [[]];
@@ -144,7 +157,6 @@ async function main() {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
                 await clearOverlays(page);
 
-                // 全セクションを確実に取得
                 const totalSections = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
@@ -223,11 +235,10 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像（GIF）の添付処理（★確実なファイル入力の割り当て）
-                            if (fs.existsSync(imagePath)) {
+                            // 🖼️ 画像の添付処理（ダウンロードした一時ファイルをセット）
+                            if (fs.existsSync(tempImagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
-                                    // Padletのアップロード/ファイル選択用ボタンをクリックしてダイアログを起動
                                     const fileUploadBtn = page.locator('button[aria-label*="ファイル"], button[aria-label*="アップロード"], button[aria-label*="file"], button[aria-label*="upload"], [data-testid*="attachment"], [data-testid*="filePicker"]').first();
                                     
                                     if (await fileUploadBtn.count() > 0 && await fileUploadBtn.isVisible()) {
@@ -235,14 +246,13 @@ async function main() {
                                         await humanDelay(page, 1500, 2500);
                                     }
 
-                                    // input[type="file"] を確実に捉えてファイルをセット
                                     const fileInput = page.locator('input[type="file"]').first();
                                     await fileInput.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
                                     
                                     if (await fileInput.count() > 0) {
-                                        await fileInput.setInputFiles(imagePath);
+                                        await fileInput.setInputFiles(tempImagePath);
                                         console.log("📁 画像ファイルの紐付け成功。プレビュー生成を待機中...");
-                                        await humanDelay(page, 6000, 8000); // プレビュー生成・サーバーアップロード待ち
+                                        await humanDelay(page, 6000, 8000);
                                     } else {
                                         console.log("⚠️ ファイル入力要素（input[type='file']）が見つかりませんでした。");
                                     }

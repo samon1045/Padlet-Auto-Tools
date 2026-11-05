@@ -206,17 +206,22 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像（GIF）の添付処理
+                            // 🖼️ 画像（GIF）の添付処理（★ファイルアップロードボタンを正確に狙い撃ち）
                             if (fs.existsSync(imagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
-                                    const attachBtn = page.locator('button[aria-label*="attachment"], button[aria-label*="image"], button[aria-label*="file"], button[aria-label*="画像"], button[aria-label*="ファイル"], [data-testid*="attachment"], [data-testid*="picker"]');
-                                    if (await attachBtn.count() > 0) {
-                                        await attachBtn.first().click();
+                                    
+                                    // フォーム下部にあるファイルアップロード・ファイルピッカー用ボタンを特定してクリック
+                                    // (絵文字ボタン等を誤爆しないよう、ファイル添付に関連する明確な属性やテストIDを優先)
+                                    const fileUploadBtn = page.locator('[data-testid*="attachment"], [data-testid*="filePicker"], button[aria-label*="ファイル"], button[aria-label*="アップロード"], button[aria-label*="file"], button[aria-label*="upload"]').first();
+                                    
+                                    if (await fileUploadBtn.count() > 0 && await fileUploadBtn.isVisible()) {
+                                        await fileUploadBtn.click();
                                         await humanDelay(page, 1500, 2500);
                                     }
 
-                                    const fileInput = page.locator('input[type="file"]').last();
+                                    // ファイル選択の隠し input 要素を正確に捕捉してセット
+                                    const fileInput = page.locator('input[type="file"]').first();
                                     await fileInput.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
                                     
                                     if (await fileInput.count() > 0) {

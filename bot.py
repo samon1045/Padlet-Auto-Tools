@@ -136,7 +136,7 @@ def main():
                     }""")
                     print(f"📝 検出したセクション数: {total_sections}")
 
-                    # 💡 【コンソールスクリプト】各セクションへの投稿作成・入力・送信をJSコンソール内で一括完結
+                    # 各セクションへの投稿作成
                     for sec_idx in range(max(total_sections, 1)):
                         print(f"➡️ セクション {sec_idx + 1} への投稿を作成中 (JSコンソール実行)...")
                         
@@ -161,66 +161,61 @@ def main():
                             if (!targetBtn) return { success: false, reason: 'Add button not found' };
                             targetBtn.click();
                             
-                            // フォームが開くまで少し待つ
+                            // フォームが開くまで待機
                             await new Promise(r => setTimeout(r, 1500));
 
-                            // 2. 入力欄（タイトル/件名および本文）を探して値をセット
-                            const inputs = Array.from(document.querySelectorAll('input, textarea, div[contenteditable="true"]'));
-                            let titleInput = null;
-                            let bodyInput = null;
-
-                            for (let el of inputs) {
-                                const ph = (el.getAttribute('placeholder') || '').toLowerCase();
-                                if (ph.includes('件名') || ph.includes('title') || ph.includes('タイトル')) {
-                                    titleInput = el;
-                                    break;
-                                }
-                            }
-                            if (!titleInput && inputs.length > 0) titleInput = inputs[0];
-
-                            if (titleInput) {
-                                titleInput.focus();
-                                if (titleInput.tagName === 'DIV') {
-                                    titleInput.innerText = title;
-                                } else {
-                                    titleInput.value = title;
-                                }
-                                titleInput.dispatchEvent(new Event('input', { bubbles: true }));
-                                titleInput.dispatchEvent(new Event('change', { bubbles: true }));
+                            // 2. 入力欄に値をセット
+                            const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
+                            if (editables.length > 0) {
+                                const titleEl = editables[0];
+                                titleEl.focus();
+                                if (titleEl.tagName === 'DIV') titleEl.innerText = title;
+                                else titleEl.value = title;
+                                titleEl.dispatchEvent(new Event('input', { bubbles: true }));
                             }
 
-                            // 本文エディタを探す
-                            const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea'));
                             if (editables.length > 1) {
-                                bodyInput = editables[1];
-                            } else if (editables.length === 1 && editables[0] !== titleInput) {
-                                bodyInput = editables[0];
+                                const bodyEl = editables[1];
+                                bodyEl.focus();
+                                if (bodyEl.tagName === 'DIV') bodyEl.innerText = message;
+                                else bodyEl.value = message;
+                                bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
                             }
 
-                            if (bodyInput) {
-                                bodyInput.focus();
-                                if (bodyInput.tagName === 'DIV') {
-                                    bodyInput.innerText = message;
-                                } else {
-                                    bodyInput.value = message;
-                                }
-                                bodyInput.dispatchEvent(new Event('input', { bubbles: true }));
-                                bodyInput.dispatchEvent(new Event('change', { bubbles: true }));
-                            }
+                            await new Promise(r => setTimeout(r, 1000));
 
-                            await new Promise(r => setTimeout(r, 800));
-
-                            // 3. 「公開 / Publish / 送信」ボタンを探してクリック
-                            const allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+                            // 3. 💡 【改良】Padletモーダルの右上にある「公開 / Submit / Publish / 送信」ボタンを確実に探してクリック
+                            const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
                             let pubBtn = null;
-                            for (let b of allBtns) {
+                            
+                            for (let b of buttons) {
                                 const t = (b.innerText || '').trim();
                                 const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                                if (t.includes('公開') || t.includes('Publish') || a.includes('publish') || a.includes('submit')) {
-                                    const rect = b.getBoundingClientRect();
-                                    if (rect.width > 0 && rect.height > 0) {
+                                const testid = (b.getAttribute('data-testid') || '').toLowerCase();
+                                
+                                // モーダル内にある確定ボタン（画面中央より上の右側にあるプライマリボタン等）を優先判定
+                                const rect = b.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
+                                    if (
+                                        t.includes('公開') || t.includes('Publish') || t.includes('送信') ||
+                                        a.includes('publish') || a.includes('submit') || a.includes('send') ||
+                                        testid.includes('publish') || testid.includes('submit') ||
+                                        b.className.includes('primary') || b.className.includes('submit')
+                                    ) {
                                         pubBtn = b;
                                         break;
+                                    }
+                                }
+                            }
+
+                            // 見つからない場合はモーダル内の最右上のボタンをフォールバックとして選択
+                            if (!pubBtn) {
+                                let rightMostX = 0;
+                                for (let b of buttons) {
+                                    const rect = b.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0 && rect.y < window.innerHeight / 2 && rect.x > rightMostX) {
+                                        rightMostX = rect.x;
+                                        pubBtn = b;
                                     }
                                 }
                             }
@@ -236,19 +231,17 @@ def main():
                         if result.get("success"):
                             print(f"🚀 セクション {sec_idx + 1} の投稿をコンソール経由で送信しました！")
                         else:
-                            # フォールバックとしてキーボード操作を試す
-                            print(f"⚠️ JSコンソールでの公開ボタン直接押下ができなかったためショートカットを試します ({result.get('reason')})")
+                            print(f"⚠️ ボタン直接押下失敗、ショートカットを試します ({result.get('reason')})")
                             page.keyboard.press("Control+Enter")
 
-                        time.sleep(3.0)
+                        time.sleep(3.5)
 
-                    # 💡 【コンソールスクリプト】コメント巡回もJSコンソール内で一括処理
+                    # コメント巡回処理
                     print("⚡ コメント巡回をコンソール経由で実行中...")
                     
                     comment_count = page.evaluate("""async ({ commentMsg }) => {
                         let count = 0;
                         for (let i = 0; i < 30; i++) {
-                            // コメント追加ボタンを探す
                             const allEls = Array.from(document.querySelectorAll('button, [role="button"], span, div'));
                             let cBtn = null;
                             for (let el of allEls) {
@@ -267,7 +260,6 @@ def main():
                             cBtn.click();
                             await new Promise(r => setTimeout(r, 1200));
 
-                            // コメント入力欄を探す
                             const editor = document.querySelector('div[contenteditable="true"], textarea');
                             if (!editor) {
                                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -275,34 +267,26 @@ def main():
                             }
 
                             editor.focus();
-                            if (editor.tagName === 'DIV') {
-                                editor.innerText = commentMsg;
-                            } else {
-                                editor.value = commentMsg;
-                            }
+                            if (editor.tagName === 'DIV') editor.innerText = commentMsg;
+                            else editor.value = commentMsg;
                             editor.dispatchEvent(new Event('input', { bubbles: true }));
-                            editor.dispatchEvent(new Event('change', { bubbles: true }));
 
-                            await new Promise(r => setTimeout(r, 600));
+                            await new Promise(r => setTimeout(r, 800));
 
-                            // 送信ボタンを探してクリック
                             const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
                             let sent = false;
                             for (let b of buttons) {
                                 const t = (b.innerText || '').trim();
                                 const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                                if (t.includes('コメント') || t.includes('Comment') || a.includes('send') || a.includes('送信')) {
-                                    const rect = b.getBoundingClientRect();
-                                    if (rect.width > 0 && rect.height > 0) {
-                                        b.click();
-                                        sent = true;
-                                        break;
-                                    }
+                                const rect = b.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0 && (t.includes('コメント') || t.includes('Comment') || a.includes('send') || a.includes('送信'))) {
+                                    b.click();
+                                    sent = true;
+                                    break;
                                 }
                             }
 
                             if (!sent) {
-                                // 見つからない場合はEnterイベントを発火
                                 editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
                             }
 

@@ -7,7 +7,7 @@ async function main() {
     const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
     const authJsonsEnv = process.env.AUTH_JSONS;
     
-    const totalRounds = 2;
+    const totalRounds = 10;
 
     if (!targetUrl || !authJsonsEnv) {
         console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");
@@ -46,18 +46,20 @@ async function main() {
 
         fs.writeFileSync(authFile, JSON.stringify({ cookies: cleanedCookies, origins: [] }, null, 2));
 
-        const videoDir = "videos";
-        if (!fs.existsSync(videoDir)) {
-            fs.mkdirSync(videoDir, { recursive: true });
-        }
-
         const context = await browser.newContext({
             storageState: authFile,
-            recordVideoDir: videoDir,
+            recordVideoDir: "videos",
             recordVideoSize: { width: 1280, height: 720 }
         });
 
         const page = await context.newPage();
+
+        // APIのエラー（403, 429など）を監視
+        page.on('response', response => {
+            if (response.status() >= 400 && response.url().includes('padlet')) {
+                console.log(`⚠️ API警告: ${response.status()} - ${response.url()}`);
+            }
+        });
 
         try {
             console.log("ボードにアクセス中...");
@@ -68,12 +70,12 @@ async function main() {
                 throw new Error("ログインセッションが無効です。");
             }
 
-            console.log(`ボード読み込み成功！全 ${totalRounds} ラウンドを高速実行します。`);
+            console.log(`ボード読み込み成功！全 ${totalRounds} ラウンドを実行します。`);
 
             for (let roundNum = 1; roundNum <= totalRounds; roundNum++) {
                 console.log(`\n--- ラウンド ${roundNum} / ${totalRounds} ---`);
 
-                // 1. セクション数を取得
+                // 1. セクション数を検出
                 const totalSections = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
@@ -91,7 +93,7 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿作成・画像添付・送信（ここが復活した部分です！）
+                // 2. 各セクションへの投稿作成・画像添付・送信
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
                     console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
 
@@ -113,25 +115,21 @@ async function main() {
                         }
 
                         if (!targetBtn) return false;
-                        
                         targetBtn.click();
                         await new Promise(r => setTimeout(r, 800));
 
-                        // タイトルとメッセージの入力
+                        // タイトルと本文の入力
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
                         if (editables.length > 0) {
                             const titleEl = editables[0];
                             titleEl.focus();
-                            if (titleEl.tagName === 'DIV') titleEl.innerText = message;
-                            else titleEl.value = message;
+                            titleEl.innerText = message;
                             titleEl.dispatchEvent(new Event('input', { bubbles: true }));
                         }
-
                         if (editables.length > 1) {
                             const bodyEl = editables[1];
                             bodyEl.focus();
-                            if (bodyEl.tagName === 'DIV') bodyEl.innerText = message;
-                            else bodyEl.value = message;
+                            bodyEl.innerText = message;
                             bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
                         }
 
@@ -141,14 +139,14 @@ async function main() {
 
                     if (!isSuccess) continue;
 
-                    // 画像ファイルのアップロード処理
+                    // 画像（GIF）のアップロード処理
                     if (fs.existsSync(imagePath)) {
                         try {
                             console.log("🖼️ 画像を添付中...");
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(1500); 
+                                await page.waitForTimeout(1500);
                             } else {
                                 const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
                                 if (attachBtn) {
@@ -162,36 +160,34 @@ async function main() {
                                 }
                             }
                         } catch (imgErr) {
-                            // ignore
+                            // 失敗時はスキップして続行
                         }
                     }
 
                     // 投稿を公開
                     await page.evaluate(async () => {
-                         const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-                         for (let b of buttons) {
-                             const t = (b.innerText || '').trim();
-                             const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                             const rect = b.getBoundingClientRect();
-                             if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
-                                 if (t.includes('公開') || t.includes('Publish') || t.includes('送信') || a.includes('publish') || a.includes('submit')) {
-                                     b.click();
-                                     break;
-                                 }
-                             }
-                         }
+                        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                        for (let b of buttons) {
+                            const t = (b.innerText || '').trim();
+                            const a = (b.getAttribute('aria-label') || '').toLowerCase();
+                            const rect = b.getBoundingClientRect();
+                            if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
+                                if (t.includes('公開') || t.includes('Publish') || t.includes('送信') || a.includes('publish') || a.includes('submit')) {
+                                    b.click();
+                                    break;
+                                }
+                            }
+                        }
                     });
 
                     await page.keyboard.press("Control+Enter");
                     await page.waitForTimeout(1000);
                 }
 
-                // 3. 高速コメント巡回
-                console.log("⚡ 高速コメント巡回を実行中...");
-                
+                // 3. すべての投稿へのコメント巡回処理
+                console.log("⚡ コメント巡回を実行中...");
                 const commentCount = await page.evaluate(async ({ commentMsg }) => {
                     let totalCommented = 0;
-                    
                     for (let attempt = 0; attempt < 50; attempt++) {
                         const allElements = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                         let commentBtn = null;
@@ -201,10 +197,7 @@ async function main() {
                             const aria = (el.getAttribute('aria-label') || '').toLowerCase();
                             const rect = el.getBoundingClientRect();
 
-                            if (
-                                rect.width > 0 && rect.height > 0 &&
-                                (text.includes('Add comment') || text.includes('コメントを追加') || text.includes('コメントを書く') || aria.includes('comment'))
-                            ) {
+                            if (rect.width > 0 && rect.height > 0 && (text.includes('Add comment') || text.includes('コメントを追加') || text.includes('コメントを書く') || aria.includes('comment'))) {
                                 commentBtn = el;
                                 break;
                             }
@@ -222,11 +215,7 @@ async function main() {
                         }
 
                         editor.focus();
-                        if (editor.tagName === 'DIV') {
-                            editor.innerText = commentMsg;
-                        } else {
-                            editor.value = commentMsg;
-                        }
+                        editor.innerText = commentMsg;
                         editor.dispatchEvent(new Event('input', { bubbles: true }));
                         await new Promise(r => setTimeout(r, 400));
 
@@ -250,7 +239,6 @@ async function main() {
                         totalCommented++;
                         await new Promise(r => setTimeout(r, 800));
                     }
-
                     return totalCommented;
                 }, { commentMsg: customMessage });
 

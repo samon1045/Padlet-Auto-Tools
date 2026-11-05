@@ -1,4 +1,4 @@
-name: Padlet Auto Bot (Python)
+name: Padlet Auto Bot (JS)
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       message:
         description: 'Post / Comment Message'
         required: true
-        default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
+        default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！'
         type: string
 
 jobs:
@@ -21,16 +21,16 @@ jobs:
       - name: リポジトリのチェックアウト
         uses: actions/checkout@v4
 
-      - name: Pythonのセットアップ
-        uses: actions/setup-python@v5
+      - name: Node.jsのセットアップ
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
+          cache: 'npm'
 
-      - name: 依存関係のインストール & Playwrightの導入
+      - name: 依存関係のインストール & Playwrightブラウザの導入
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          playwright install chromium
+          npm ci || npm install
+          npx playwright install chromium
 
       - name: ボットの実行
         env:
@@ -38,11 +38,9 @@ jobs:
           TARGET_URL: ${{ inputs.target_url }}
           CUSTOM_MESSAGE: ${{ inputs.message }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python bot.py
+          node bot.js
 
-      # 💡 【追加】ボットの成功・失敗に関わらず、画面録画の成果物をアップロードする
       - name: Upload Recorded Video
         uses: actions/upload-artifact@v4
         if: always()

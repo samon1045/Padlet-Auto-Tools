@@ -1,48 +1,59 @@
-name: Padlet Auto Bot (JS)
+name: Run Padlet Bot
 
 on:
   workflow_dispatch:
     inputs:
-      target_url:
-        description: 'Padlet Board URL'
+      total_rounds:
+        description: '実行ラウンド数'
         required: true
-        type: string
-      message:
-        description: 'Post / Comment Message'
+        default: '1'
+      enable_post:
+        description: '投稿を行うか (true/false)'
         required: true
+        default: 'true'
+      enable_comment:
+        description: 'コメントを行うか (true/false)'
+        required: true
+        default: 'true'
+      use_guest:
+        description: 'フリー(ゲスト)アカウントで実行するか (true/false)'
+        required: true
+        default: 'false'
+      title_message:
+        description: '投稿のタイトル'
+        required: false
+        default: 'さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado'
+      custom_message:
+        description: '投稿本文およびコメントメッセージ'
+        required: false
         default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
-        type: string
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
-      - name: リポジトリのチェックアウト
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Node.jsのセットアップ
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: 18
 
-      - name: 依存関係のインストール & Playwrightブラウザの導入
-        run: |
-          npm install
-          npx playwright install chromium
+      - name: Install dependencies
+        run: npm install playwright
 
-      - name: ボットの実行
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Bot
         env:
+          TARGET_URL: ${{ secrets.TARGET_URL }}
           AUTH_JSONS: ${{ secrets.AUTH_JSONS }}
-          TARGET_URL: ${{ inputs.target_url }}
-          CUSTOM_MESSAGE: ${{ inputs.message }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          node bot.js
-
-      - name: Upload Recorded Video
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-recording
-          path: videos/
+          TOTAL_ROUNDS: ${{ github.event.inputs.total_rounds }}
+          ENABLE_POST: ${{ github.event.inputs.enable_post }}
+          ENABLE_COMMENT: ${{ github.event.inputs.enable_comment }}
+          USE_GUEST: ${{ github.event.inputs.use_guest }}
+          TITLE_MESSAGE: ${{ github.event.inputs.title_message }}
+          CUSTOM_MESSAGE: ${{ github.event.inputs.custom_message }}
+        run: node bot.js

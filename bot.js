@@ -7,7 +7,7 @@ async function main() {
     const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
     const authJsonsEnv = process.env.AUTH_JSONS;
     
-    const totalRounds = 10;
+    const totalRounds = 2;
 
     if (!targetUrl || !authJsonsEnv) {
         console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");

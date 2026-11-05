@@ -39,6 +39,22 @@ async function humanType(page, locator, text) {
     }
 }
 
+// 実行ディレクトリ内から画像・GIFファイルを自動で探す安全な関数
+function findImageFile() {
+    const targetNames = ["_______.gif", "image.gif", "upload.gif", "img.gif"];
+    for (let name of targetNames) {
+        const p = path.join(process.cwd(), name);
+        if (fs.existsSync(p)) return p;
+    }
+    // ディレクトリ内の最初の.gifファイルを自動検出
+    try {
+        const files = fs.readdirSync(process.cwd());
+        const gifFile = files.find(f => f.endsWith('.gif'));
+        if (gifFile) return path.join(process.cwd(), gifFile);
+    } catch (e) {}
+    return path.join(process.cwd(), "_______.gif");
+}
+
 async function main() {
     if (!TARGET_URL) {
         console.error("❌ TARGET_URL が設定されていません。");
@@ -53,11 +69,11 @@ async function main() {
     console.log(`・フリー(ゲスト)アカウント使用: ${USE_GUEST}`);
     console.log("===================================\n");
 
-    const imagePath = path.join(__dirname, "_______.gif");
+    const imagePath = findImageFile();
     if (fs.existsSync(imagePath)) {
-        console.log(`✅ 画像ファイルを確認しました: ${imagePath}`);
+        console.log(`✅ 画像ファイルを自動検出しました: ${imagePath}`);
     } else {
-        console.log(`⚠️ 警告: 指定された画像ファイル "${imagePath}" が見つかりません！`);
+        console.log(`⚠️ 警告: 画像ファイルが見つかりません（テキストのみで投稿します）: ${imagePath}`);
     }
 
     let accountCookieLists = [[]];
@@ -128,6 +144,7 @@ async function main() {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
                 await clearOverlays(page);
 
+                // 全セクションを確実に取得
                 const totalSections = await page.evaluate(() => {
                     const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                     let count = 0;
@@ -142,11 +159,11 @@ async function main() {
                     return count;
                 });
 
-                const sectionCount = Math.max(Math.min(totalSections, 10), 1);
-                console.log(`📝 検出されたセクション数 (安全制限適用): ${sectionCount}`);
+                const sectionCount = Math.max(totalSections, 1);
+                console.log(`📝 検出されたセクション数 (全件対象): ${sectionCount}`);
 
                 // -------------------------------------------------------------
-                // 1. 各セクションへの投稿処理（画像付き）
+                // 1. 全セクションへの投稿処理（画像付き）
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
@@ -206,30 +223,28 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像（GIF）の添付処理（★ファイルアップロードボタンを正確に狙い撃ち）
+                            // 🖼️ 画像（GIF）の添付処理（★確実なファイル入力の割り当て）
                             if (fs.existsSync(imagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
-                                    
-                                    // フォーム下部にあるファイルアップロード・ファイルピッカー用ボタンを特定してクリック
-                                    // (絵文字ボタン等を誤爆しないよう、ファイル添付に関連する明確な属性やテストIDを優先)
-                                    const fileUploadBtn = page.locator('[data-testid*="attachment"], [data-testid*="filePicker"], button[aria-label*="ファイル"], button[aria-label*="アップロード"], button[aria-label*="file"], button[aria-label*="upload"]').first();
+                                    // Padletのアップロード/ファイル選択用ボタンをクリックしてダイアログを起動
+                                    const fileUploadBtn = page.locator('button[aria-label*="ファイル"], button[aria-label*="アップロード"], button[aria-label*="file"], button[aria-label*="upload"], [data-testid*="attachment"], [data-testid*="filePicker"]').first();
                                     
                                     if (await fileUploadBtn.count() > 0 && await fileUploadBtn.isVisible()) {
                                         await fileUploadBtn.click();
                                         await humanDelay(page, 1500, 2500);
                                     }
 
-                                    // ファイル選択の隠し input 要素を正確に捕捉してセット
+                                    // input[type="file"] を確実に捉えてファイルをセット
                                     const fileInput = page.locator('input[type="file"]').first();
                                     await fileInput.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
                                     
                                     if (await fileInput.count() > 0) {
                                         await fileInput.setInputFiles(imagePath);
                                         console.log("📁 画像ファイルの紐付け成功。プレビュー生成を待機中...");
-                                        await humanDelay(page, 6000, 8000);
+                                        await humanDelay(page, 6000, 8000); // プレビュー生成・サーバーアップロード待ち
                                     } else {
-                                        console.log('⚠️ ファイル入力要素（input[type="file"]）が見つかりませんでした。');
+                                        console.log("⚠️ ファイル入力要素（input[type='file']）が見つかりませんでした。");
                                     }
                                 } catch (imgErr) {
                                     console.log(`⚠️ 画像添付エラー: ${imgErr.message}`);

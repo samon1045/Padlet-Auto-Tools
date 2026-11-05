@@ -7,8 +7,8 @@ async function main() {
     const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
     const authJsonsEnv = process.env.AUTH_JSONS;
     
-    // 💡 安定動作のため、まずは 3 ラウンドに設定（必要に応じて 10 に戻せます）
-    const totalRounds = 3;
+    // 💡 10回に戻して一気に高速実行
+    const totalRounds = 10;
 
     if (!targetUrl || !authJsonsEnv) {
         console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");
@@ -63,13 +63,13 @@ async function main() {
         try {
             console.log("ボードにアクセス中...");
             await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(6000);
+            await page.waitForTimeout(4000);
 
             if (page.url().includes("login") || page.url().includes("verify")) {
                 throw new Error("ログインセッションが無効です。");
             }
 
-            console.log(`ボード読み込み成功！全 ${totalRounds} ラウンドを実行します。`);
+            console.log(`ボード読み込み成功！全 ${totalRounds} ラウンドを高速実行します。`);
 
             for (let roundNum = 1; roundNum <= totalRounds; roundNum++) {
                 console.log(`\n--- ラウンド ${roundNum} / ${totalRounds} ---`);
@@ -92,10 +92,8 @@ async function main() {
                 console.log(`📝 検出したセクション数: ${totalSections}`);
                 const loopCount = Math.max(totalSections, 1);
 
-                // 2. 各セクションへの投稿作成・画像添付・送信（1つずつ確実に完了させる）
+                // 2. 各セクションへの投稿作成・画像添付・送信（高速化）
                 for (let secIdx = 0; secIdx < loopCount; secIdx++) {
-                    console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
-
                     const isSuccess = await page.evaluate(async ({ secIndex, message }) => {
                         const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
                         let count = 0;
@@ -116,7 +114,7 @@ async function main() {
                         if (!targetBtn) return false;
                         
                         targetBtn.click();
-                        await new Promise(r => setTimeout(r, 2000));
+                        await new Promise(r => setTimeout(r, 800)); // 待機を短縮
 
                         // タイトルとメッセージの入力
                         const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
@@ -136,42 +134,37 @@ async function main() {
                             bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
                         }
 
-                        await new Promise(r => setTimeout(r, 1000));
+                        await new Promise(r => setTimeout(r, 400));
                         return true;
                     }, { secIndex: secIdx, message: customMessage });
 
-                    if (!isSuccess) {
-                         console.log(`⚠️ セクション ${secIdx + 1} の追加ボタンが見つかりませんでした。スキップします。`);
-                         continue;
-                    }
+                    if (!isSuccess) continue;
 
-                    // 画像ファイルのアップロード処理
+                    // 画像ファイルのアップロード処理（最小限の待機に調整）
                     if (fs.existsSync(imagePath)) {
                         try {
-                            console.log("🖼️ 画像を添付中...");
                             const uploadInput = await page.$('input[type="file"]');
                             if (uploadInput) {
                                 await uploadInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(5000); // プレビュー生成をしっかり待つ
+                                await page.waitForTimeout(1500); 
                             } else {
                                 const attachBtn = await page.$('[aria-label*="image"], [aria-label*="file"], [aria-label*="画像"], [aria-label*="アップロード"], button:has(svg)');
                                 if (attachBtn) {
                                     await attachBtn.click();
-                                    await page.waitForTimeout(1000);
+                                    await page.waitForTimeout(500);
                                     const lateInput = await page.$('input[type="file"]');
                                     if (lateInput) {
                                         await lateInput.setInputFiles(imagePath);
-                                        await page.waitForTimeout(5000);
+                                        await page.waitForTimeout(1500);
                                     }
                                 }
                             }
                         } catch (imgErr) {
-                            console.log(`⚠️ 画像アップロードスキップ: ${imgErr.message}`);
+                            // ignore
                         }
                     }
 
                     // 投稿を公開
-                    console.log("📤 投稿を送信（公開）します...");
                     await page.evaluate(async () => {
                          const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
                          for (let b of buttons) {
@@ -188,19 +181,15 @@ async function main() {
                     });
 
                     await page.keyboard.press("Control+Enter");
-                    // 投稿がサーバーに確実に反映されるまでしっかりウェイトを挟む
-                    await page.waitForTimeout(4000);
-                    console.log(`🚀 セクション ${secIdx + 1} の投稿が完了しました！`);
+                    await page.waitForTimeout(1000); // 投稿間のウェイトを最小限に
                 }
 
-                // 3. すべての投稿へのコメント巡回・送信処理
-                console.log("⚡ すべての投稿へのコメント巡回を実行中...");
-                await page.waitForTimeout(3000); // コメント対象が出現するのを待つ
+                console.log("⚡ 高速コメント巡回を実行中...");
                 
                 const commentCount = await page.evaluate(async ({ commentMsg }) => {
                     let totalCommented = 0;
                     
-                    for (let attempt = 0; attempt < 30; attempt++) {
+                    for (let attempt = 0; attempt < 50; attempt++) {
                         const allElements = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                         let commentBtn = null;
 
@@ -218,12 +207,10 @@ async function main() {
                             }
                         }
 
-                        if (!commentBtn) {
-                            break;
-                        }
+                        if (!commentBtn) break;
 
                         commentBtn.click();
-                        await new Promise(r => setTimeout(r, 1200));
+                        await new Promise(r => setTimeout(r, 600));
 
                         const editor = document.querySelector('div[contenteditable="true"], textarea');
                         if (!editor) {
@@ -238,7 +225,7 @@ async function main() {
                             editor.value = commentMsg;
                         }
                         editor.dispatchEvent(new Event('input', { bubbles: true }));
-                        await new Promise(r => setTimeout(r, 800));
+                        await new Promise(r => setTimeout(r, 400));
 
                         const actionButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
                         let sent = false;
@@ -258,18 +245,17 @@ async function main() {
                         }
 
                         totalCommented++;
-                        await new Promise(r => setTimeout(r, 2000));
+                        await new Promise(r => setTimeout(r, 800)); // コメント送信間のウェイト短縮
                     }
 
                     return totalCommented;
                 }, { commentMsg: customMessage });
 
-                console.log(`✨ コメント巡回が完了しました。合計 ${commentCount} 件の投稿にコメントしました！`);
+                console.log(`✨ ラウンド ${roundNum} 完了（コメント ${commentCount} 件）`);
 
                 if (roundNum < totalRounds) {
-                    console.log("🔄 次のラウンドへ向けてボードを再読み込みします...");
                     await page.reload({ waitUntil: "domcontentloaded" });
-                    await page.waitForTimeout(5000);
+                    await page.waitForTimeout(2000);
                 }
             }
 

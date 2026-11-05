@@ -61,3 +61,10 @@ jobs:
           TITLE_MESSAGE: ${{ github.event.inputs.title_message }}
           CUSTOM_MESSAGE: ${{ github.event.inputs.custom_message }}
         run: node bot.js
+
+      - name: Upload Recorded Video
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: padlet-bot-video
+          path: videos/

@@ -8,7 +8,6 @@ const TARGET_URL = process.env.TARGET_URL;
 const TITLE_MESSAGE = process.env.TITLE_MESSAGE || "さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado";
 const CUSTOM_MESSAGE = process.env.CUSTOM_MESSAGE || "お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ";
 
-// ★ ここに取得したい画像のURLを指定してください（必要に応じて変更可能）
 const IMAGE_URL = process.env.IMAGE_URL || "https://videotourl.com/images/1793876226932-8e8e55c2-70b5-480f-a533-84510fa11a81.gif";
 
 const TOTAL_ROUNDS = parseInt(process.env.TOTAL_ROUNDS || "2", 10);
@@ -235,7 +234,7 @@ async function main() {
                                 await humanDelay(page, 800, 1200);
                             }
 
-                            // 🖼️ 画像の添付処理（ダウンロードした一時ファイルをセット）
+                            // 🖼️ 画像の添付処理（★アップロード完了を確実に待機）
                             if (fs.existsSync(tempImagePath)) {
                                 try {
                                     console.log("🖼️ 画像を添付中...");
@@ -251,8 +250,10 @@ async function main() {
                                     
                                     if (await fileInput.count() > 0) {
                                         await fileInput.setInputFiles(tempImagePath);
-                                        console.log("📁 画像ファイルの紐付け成功。プレビュー生成を待機中...");
-                                        await humanDelay(page, 6000, 8000);
+                                        console.log("📁 画像ファイルの紐付け成功。プレビュー生成とアップロードを待機中...");
+                                        
+                                        // ★ アップロード・プレビューが完了するまでしっかりと待機時間を長め（10秒〜12秒）に確保
+                                        await humanDelay(page, 10000, 12000);
                                     } else {
                                         console.log("⚠️ ファイル入力要素（input[type='file']）が見つかりませんでした。");
                                     }

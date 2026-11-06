@@ -44,15 +44,47 @@ async function main() {
 
     let cookiesList = [[]];
     if (!USE_GUEST && process.env.AUTH_JSONS) {
-        try { cookiesList = JSON.parse(process.env.AUTH_JSONS); } catch (e) {}
+        try { 
+            cookiesList = JSON.parse(process.env.AUTH_JSONS); 
+        } catch (e) {
+            console.error("❌ AUTH_JSONS のパースに失敗しました:", e);
+        }
     }
 
     for (let index = 0; index < cookiesList.length; index++) {
+        console.log(`\n🔑 アカウント [${index + 1} / ${cookiesList.length}] の処理を開始します...`);
+        
         const context = await browser.newContext({
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             viewport: { width: 1920, height: 1080 },
             recordVideo: { dir: videosDir, size: { width: 1920, height: 1080 } }
         });
+
+        // Cookieの適用
+        if (cookiesList[index] && cookiesList[index].length > 0) {
+            try {
+                // Playwrightの仕様に合わせるため有効期限などを調整
+                const formattedCookies = cookiesList[index].map(c => {
+                    const cookie = { ...c };
+                    if (cookie.expirationDate) {
+                        cookie.expires = cookie.expirationDate;
+                        delete cookie.expirationDate;
+                    }
+                    // sameSite の調整
+                    if (cookie.sameSite === "no_restriction") cookie.sameSite = "None";
+                    else if (cookie.sameSite === "lax") cookie.sameSite = "Lax";
+                    else if (cookie.sameSite === "strict") cookie.sameSite = "Strict";
+                    else delete cookie.sameSite;
+                    
+                    return cookie;
+                });
+                await context.addCookies(formattedCookies);
+                console.log(`✅ ${formattedCookies.length} 件のCookieを適用しました。`);
+            } catch (cookieErr) {
+                console.error("⚠️ Cookieの適用中に警告が発生しました:", cookieErr);
+            }
+        }
+
         const page = await context.newPage();
 
         let is429Hit = false;
@@ -63,7 +95,7 @@ async function main() {
         try {
             await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
             console.log("⏳ ページの読み込みを待機中...");
-            await sleep(7000); // レンダリング完了を長めに待つ
+            await sleep(7000); // レンダリング完了を待つ
 
             for (let roundNum = 1; roundNum <= TOTAL_ROUNDS; roundNum++) {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
@@ -73,22 +105,18 @@ async function main() {
                 // 1. 投稿処理
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
-                    // デバッグ用: ページ内のボタン情報を出力して確認
                     const allButtons = page.locator('button');
                     const btnCountTotal = await allButtons.count();
                     console.log(`🔍 ページ内の総ボタン数: ${btnCountTotal}`);
 
-                    // 投稿・追加ボタンのセレクター（より広範にマッチさせる）
                     const addBtns = page.locator('button, [role="button"], [data-testid*="add"], [data-testid*="create"]').filter({
                         hasText: /^\+$|Add|追加|投稿|Create|Make/i
                     });
                     
                     let sectionCount = await addBtns.count();
 
-                    // もし通常のフィルタでヒットしない場合、右下のプラスボタンなどを強制的に探すフォールバック
                     if (sectionCount === 0) {
                         console.log("⚠️ 標準の追加ボタンが見つからないため、アイコンボタン等をスキャンします...");
-                        // 代替として画面上のボタンを総当たりで確認
                         for (let i = 0; i < Math.min(btnCountTotal, 20); i++) {
                             const bText = await allButtons.nth(i).textContent().catch(() => "");
                             const bAria = await allButtons.nth(i).getAttribute('aria-label').catch(() => "");
@@ -178,7 +206,6 @@ async function main() {
 
             await context.close();
             console.log("✅ アカウントの処理が完了しました。");
-            break;
         } catch (err) {
             console.error("❌ エラーが発生しました:", err);
             await context.close();

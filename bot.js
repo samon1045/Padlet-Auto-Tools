@@ -62,7 +62,8 @@ async function main() {
 
         try {
             await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
-            await sleep(5000);
+            console.log("⏳ ページの読み込みを待機中...");
+            await sleep(7000); // レンダリング完了を長めに待つ
 
             for (let roundNum = 1; roundNum <= TOTAL_ROUNDS; roundNum++) {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
@@ -72,11 +73,30 @@ async function main() {
                 // 1. 投稿処理
                 // -------------------------------------------------------------
                 if (ENABLE_POST) {
-                    const addBtns = page.locator('button, [role="button"], [data-testid*="add"]').filter({
-                        hasText: /^\+$|Add|追加/i
+                    // デバッグ用: ページ内のボタン情報を出力して確認
+                    const allButtons = page.locator('button');
+                    const btnCountTotal = await allButtons.count();
+                    console.log(`🔍 ページ内の総ボタン数: ${btnCountTotal}`);
+
+                    // 投稿・追加ボタンのセレクター（より広範にマッチさせる）
+                    const addBtns = page.locator('button, [role="button"], [data-testid*="add"], [data-testid*="create"]').filter({
+                        hasText: /^\+$|Add|追加|投稿|Create|Make/i
                     });
-                    const sectionCount = await addBtns.count();
-                    console.log(`📝 検出セクション数: ${sectionCount}`);
+                    
+                    let sectionCount = await addBtns.count();
+
+                    // もし通常のフィルタでヒットしない場合、右下のプラスボタンなどを強制的に探すフォールバック
+                    if (sectionCount === 0) {
+                        console.log("⚠️ 標準の追加ボタンが見つからないため、アイコンボタン等をスキャンします...");
+                        // 代替として画面上のボタンを総当たりで確認
+                        for (let i = 0; i < Math.min(btnCountTotal, 20); i++) {
+                            const bText = await allButtons.nth(i).textContent().catch(() => "");
+                            const bAria = await allButtons.nth(i).getAttribute('aria-label').catch(() => "");
+                            console.log(`  - [Button ${i}] text: "${bText.trim()}", aria-label: "${bAria}"`);
+                        }
+                    }
+
+                    console.log(`📝 検出セクション/追加ボタン数: ${sectionCount}`);
 
                     for (let secIdx = 0; secIdx < sectionCount; secIdx++) {
                         for (let postRepeat = 1; postRepeat <= 2; postRepeat++) {
@@ -102,7 +122,7 @@ async function main() {
 
                             // 公開ボタン
                             const pubBtn = page.locator('button, [role="button"]').filter({
-                                hasText: /公開|Publish|送信/i
+                                hasText: /公開|Publish|送信|Submit/i
                             }).first();
 
                             if (await pubBtn.isVisible()) {
@@ -120,7 +140,7 @@ async function main() {
                 // -------------------------------------------------------------
                 if (ENABLE_COMMENT) {
                     const triggers = page.locator('button, [role="button"]').filter({
-                        hasText: /Add comment|コメントを追加|コメントを書く/i
+                        hasText: /Add comment|コメントを追加|コメントを書く|Add/i
                     });
                     const commentCount = await triggers.count();
                     console.log(`💬 検出コメント対象数: ${commentCount}`);

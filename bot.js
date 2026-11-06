@@ -5,7 +5,6 @@ const path = require('path');
 const TARGET_URL = process.env.TARGET_URL;
 const TITLE_MESSAGE = process.env.TITLE_MESSAGE || "さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado";
 const IMAGE_URL = process.env.IMAGE_URL || "https://videotourl.com/images/1793876226932-8e8e55c2-70b5-480f-a533-84510fa11a81.gif";
-// 本文にメッセージと画像URLを統合してプレビュー表示させる方式
 const CUSTOM_MESSAGE = (process.env.CUSTOM_MESSAGE || "お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてね-！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ") + "\n" + IMAGE_URL;
 
 const TOTAL_ROUNDS = parseInt(process.env.TOTAL_ROUNDS || "2", 10);
@@ -18,7 +17,7 @@ async function humanDelay(page, minMs = 2500, maxMs = 5000) {
     await page.waitForTimeout(delay);
 }
 
-// 邪魔なオーバーレイやポップアップがあれば閉じる補助関数
+// オーバーレイやダイアログを自動閉鎖
 async function clearOverlays(page) {
     try {
         const overlay = page.locator('.oz-overlay, [data-testid*="Dialog"], [data-testid*="modal"]');
@@ -29,15 +28,25 @@ async function clearOverlays(page) {
     } catch (e) {}
 }
 
+// 人間らしいタイピング関数
 async function humanType(page, locator, text) {
     await clearOverlays(page);
-    await locator.click({ timeout: 5000 }).catch(async () => {
-        await locator.evaluate(node => node.focus());
-    });
+    try {
+        await locator.click({ timeout: 5000 });
+    } catch (e) {
+        await locator.evaluate(node => node.focus()).catch(() => {});
+    }
     await page.waitForTimeout(300);
-    for (let char of text) {
-        await page.keyboard.type(char);
-        await page.waitForTimeout(Math.floor(Math.random() * 20) + 10);
+    
+    // まとめて入力するか、1文字ずつ入力
+    try {
+        for (let char of text) {
+            await page.keyboard.type(char);
+            await page.waitForTimeout(Math.floor(Math.random() * 25) + 15);
+        }
+    } catch (err) {
+        // フォールバック: keyboardが効かない場合は直接fill
+        await locator.fill(text).catch(() => {});
     }
 }
 
@@ -47,9 +56,8 @@ async function main() {
         process.exit(1);
     }
 
-    console.log("=== 🚀 Padlet Bot 起動パラメータ (完全版・録画付き) ===");
+    console.log("=== 🚀 Padlet Bot 起動パラメータ (修正版) ===");
     console.log(`・ターゲットURL: ${TARGET_URL}`);
-    console.log(`・画像URL: ${IMAGE_URL}`);
     console.log(`・実行ラウンド数: ${TOTAL_ROUNDS}`);
     console.log(`・投稿実行: ${ENABLE_POST}`);
     console.log(`・コメント実行: ${ENABLE_COMMENT}`);
@@ -82,13 +90,16 @@ async function main() {
 
     for (let index = 0; index < accountCookieLists.length; index++) {
         const accountNum = index + 1;
-        
-        // 🎥 録画設定 (videos/ ディレクトリに保存)
+        const videosDir = path.join(process.cwd(), 'videos');
+        if (!fs.existsSync(videosDir)) {
+            fs.mkdirSync(videosDir, { recursive: true });
+        }
+
         const contextOptions = {
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             viewport: { width: 1920, height: 1080 },
             recordVideo: {
-                dir: path.join(process.cwd(), 'videos/'),
+                dir: videosDir,
                 size: { width: 1920, height: 1080 }
             }
         };
@@ -123,9 +134,8 @@ async function main() {
 
         try {
             console.log("ボードへアクセス中...");
-            await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
+            await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
             
-            // ★ ボードの要素が完全に読み込まれるまで確実に待機
             console.log("ボードの描画を待機中...");
             await page.waitForTimeout(6000);
 
@@ -133,35 +143,22 @@ async function main() {
                 console.log(`\n--- ラウンド ${roundNum} / ${TOTAL_ROUNDS} ---`);
                 await clearOverlays(page);
 
-                // セクションの「＋」ボタンが出現するまで最大15秒待機
-                await page.waitForSelector('button, [role="button"], [data-testid*="add"]', { timeout: 15000 }).catch(() => {});
-
-                // 全セクションの数を取得
-                const sectionCount = await page.evaluate(() => {
-                    const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
-                    let count = 0;
-                    for (let btn of addBtns) {
-                        const rect = btn.getBoundingClientRect();
-                        const text = (btn.innerText || '').trim();
-                        const aria = btn.getAttribute('aria-label') || '';
-                        if ((text === '+' || aria.includes('Add') || aria.includes('追加') || btn.className.includes('add')) && rect.width > 0 && rect.height > 0) {
-                            count++;
-                        }
-                    }
-                    return count;
+                // 追加ボタンの取得
+                const addButtonsLocator = page.locator('button, [role="button"], [data-testid*="add"]').filter({
+                    hasText: /^\+$|Add|追加/i
                 });
 
-                console.log(`📝 検出されたセクション数 (全件対象): ${sectionCount}`);
+                await addButtonsLocator.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+                const sectionCount = await addButtonsLocator.count();
+                console.log(`📝 検出されたセクション数: ${sectionCount}`);
 
-                // -------------------------------------------------------------
-                // 1. 全セクションへの投稿処理（2回連続）
-                // -------------------------------------------------------------
-                if (ENABLE_POST) {
+                // 1. 全セクションへの投稿処理
+                if (ENABLE_POST && sectionCount > 0) {
                     console.log("📝 全セクションへの2回繰り返し投稿処理を開始します...");
 
                     for (let secIdx = 0; secIdx < sectionCount; secIdx++) {
                         for (let postRepeat = 1; postRepeat <= 2; postRepeat++) {
-                            console.log(`➡️ セクション ${secIdx + 1} / ${sectionCount} への投稿 (回数 ${postRepeat}/2)...`);
+                            console.log(`➡️ セクション ${secIdx + 1} / ${sectionCount} への投稿 (${postRepeat}/2回目)...`);
                             await clearOverlays(page);
 
                             if (is429Hit) {
@@ -170,30 +167,13 @@ async function main() {
                                 is429Hit = false;
                             }
 
-                            // セクションの「＋」ボタンを確実に再スキャンしてクリック
-                            const clicked = await page.evaluate((sIdx) => {
-                                const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
-                                let count = 0;
-                                let targetBtn = null;
-                                for (let btn of addBtns) {
-                                    const rect = btn.getBoundingClientRect();
-                                    const text = (btn.innerText || '').trim();
-                                    const aria = btn.getAttribute('aria-label') || '';
-                                    if ((text === '+' || aria.includes('Add') || aria.includes('追加') || btn.className.includes('add')) && rect.width > 0 && rect.height > 0) {
-                                        if (count === sIdx) {
-                                            targetBtn = btn;
-                                            break;
-                                        }
-                                        count++;
-                                    }
-                                }
-                                if (!targetBtn) return false;
-                                targetBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                targetBtn.click();
-                                return true;
-                            }, secIdx);
-
-                            if (!clicked) {
+                            const targetBtn = addButtonsLocator.nth(secIdx);
+                            if (await targetBtn.isVisible()) {
+                                await targetBtn.scrollIntoViewIfNeeded();
+                                await targetBtn.click().catch(async () => {
+                                    await targetBtn.evaluate(el => el.click());
+                                });
+                            } else {
                                 console.log(`⚠️ セクション ${secIdx + 1} の追加ボタンが見つかりません。スキップします。`);
                                 continue;
                             }
@@ -201,7 +181,6 @@ async function main() {
                             await humanDelay(page, 2000, 3000);
                             await clearOverlays(page);
 
-                            // タイトルとメッセージを入力
                             const editables = page.locator('div[contenteditable="true"], textarea, input[type="text"]');
                             const editCount = await editables.count();
 
@@ -212,28 +191,17 @@ async function main() {
 
                             if (editCount > 1) {
                                 await humanType(page, editables.nth(1), CUSTOM_MESSAGE);
-                                await humanDelay(page, 1500, 2000); // プレビュー生成待ち
+                                await humanDelay(page, 1500, 2000);
                             }
 
-                            // 投稿公開ボタンをクリック
                             console.log("📤 投稿を公開します...");
-                            const isPublished = await page.evaluate(() => {
-                                const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-                                for (let b of buttons) {
-                                    const t = (b.innerText || '').trim();
-                                    const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                                    const rect = b.getBoundingClientRect();
-                                    if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
-                                        if (t.includes('公開') || t.includes('Publish') || t.includes('送信') || a.includes('publish') || a.includes('submit')) {
-                                            b.click();
-                                            return true;
-                                        }
-                                    }
-                                }
-                                return false;
-                            });
+                            const publishBtn = page.locator('button, [role="button"]').filter({
+                                hasText: /公開|Publish|送信/i
+                            }).first();
 
-                            if (!isPublished) {
+                            if (await publishBtn.isVisible()) {
+                                await publishBtn.click();
+                            } else {
                                 await page.keyboard.press("Control+Enter");
                             }
 
@@ -243,11 +211,9 @@ async function main() {
                     }
                 }
 
-                // -------------------------------------------------------------
                 // 2. コメント巡回処理
-                // -------------------------------------------------------------
                 if (ENABLE_COMMENT) {
-                    console.log("⚡ 全投稿への2回連続コメント巡回を開始します...");
+                    console.log("⚡ コメント巡回を開始します...");
 
                     const commentTriggers = page.locator('button, [role="button"]').filter({
                         hasText: /Add comment|コメントを追加|コメントを書く/i
@@ -267,7 +233,7 @@ async function main() {
                         const trigger = commentTriggers.nth(i);
                         if (await trigger.isVisible()) {
                             await trigger.scrollIntoViewIfNeeded();
-                            await trigger.click();
+                            await trigger.click().catch(() => {});
                             await humanDelay(page, 1500, 2500);
 
                             for (let cTimes = 1; cTimes <= 2; cTimes++) {
@@ -283,7 +249,7 @@ async function main() {
 
                                     const submitBtn = page.locator('button[aria-label*="send"], button[aria-label*="送信"], button:has-text("Send")').last();
                                     if (await submitBtn.isVisible()) {
-                                        await submitBtn.click();
+                                        await submitBtn.click().catch(() => {});
                                     }
 
                                     await humanDelay(page, 3000, 4000);
@@ -301,9 +267,8 @@ async function main() {
             }
 
             await context.close();
-            console.log(`🎥 実行の録画が保存されました。`);
-            console.log(`✅ アカウント #${accountNum} の処理が終了しました。`);
-            break;
+            console.log(`🎥 実行録画完了。`);
+            console.log(`✅ アカウント #${accountNum} の処理が完了しました。`);
 
         } catch (err) {
             console.error(`❌ エラーが発生しました:`, err);

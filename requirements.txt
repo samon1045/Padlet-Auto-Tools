@@ -1,2 +1,2 @@
-playwright
-google-genai
+playwright>=1.40.0
+camoufox>=0.1.0

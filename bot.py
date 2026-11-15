@@ -114,19 +114,16 @@ async def main():
                         btn_count_total = await all_buttons.count()
                         print(f"🔍 ページ内の総ボタン数: {btn_count_total}")
 
-                        # 修正: テキストまたは aria-label に「追加」「投稿」「Add」等を含むボタンを広くキャッチする
                         add_btns = page.locator(
                             'button, [role="button"], [data-testid*="add"], [data-testid*="create"]'
                         ).filter(
                             has_text=r"^\+$|Add|追加|投稿|Create|Make"
                         )
                         
-                        # aria-label属性も対象に含めるためのフォールバック/追加セレクター
                         aria_add_btns = page.locator(
                             'button[aria-label*="追加"], button[aria-label*="投稿"], button[aria-label*="Add"], button[aria-label*="書き始める"]'
                         )
 
-                        # 通常のadd_btnsで見つからない場合はaria-labelベースのセレクターを採用
                         section_count = await add_btns.count()
                         if section_count == 0:
                             add_btns = aria_add_btns
@@ -150,7 +147,8 @@ async def main():
                                     is_429_hit["value"] = False
 
                                 btn = add_btns.nth(sec_idx)
-                                if not await btn.is_visible():
+                                # is_visible() は同期メソッドのため await を削除
+                                if not btn.is_visible():
                                     continue
 
                                 await btn.scroll_into_view_if_needed()
@@ -171,7 +169,8 @@ async def main():
                                     has_text=r"公開|Publish|送信|Submit"
                                 ).first()
 
-                                if await pub_btn.is_visible():
+                                # is_visible() は同期メソッドのため await を削除
+                                if pub_btn.is_visible():
                                     await pub_btn.click()
                                 else:
                                     await page.keyboard.press("Control+Enter")
@@ -190,7 +189,8 @@ async def main():
                         for i in range(comment_count):
                             await clear_overlays(page)
                             trig = triggers.nth(i)
-                            if not await trig.is_visible():
+                            # is_visible() は同期メソッドのため await を削除
+                            if not trig.is_visible():
                                 continue
 
                             await trig.scroll_into_view_if_needed()
@@ -201,14 +201,16 @@ async def main():
                             await sleep(1500)
 
                             for c_times in range(1, 3):
-                                input_area = page.locator('div[contenteditable="true"], textarea').last
-                                if await input_area.is_visible():
+                                input_area = page.locator('div[contenteditable="true"], textarea').nth(-1)
+                                # is_visible() は同期メソッドのため await を削除
+                                if input_area.is_visible():
                                     await input_area.fill(CUSTOM_MESSAGE)
                                     await sleep(1000)
                                     await page.keyboard.press("Enter")
 
-                                    submit_btn = page.locator('button[aria-label*="send"], button[aria-label*="送信"]').last
-                                    if await submit_btn.is_visible():
+                                    submit_btn = page.locator('button[aria-label*="send"], button[aria-label*="送信"]').nth(-1)
+                                    # is_visible() は同期メソッドのため await を削除
+                                    if submit_btn.is_visible():
                                         try:
                                             await submit_btn.click()
                                         except Exception:

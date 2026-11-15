@@ -62,7 +62,7 @@ jobs:
           USE_GUEST: ${{ github.event.inputs.use_guest }}
           TITLE_MESSAGE: ${{ github.event.inputs.title_message }}
           CUSTOM_MESSAGE: ${{ github.event.inputs.custom_message }}
-        run: python request.py
+        run: python bot.py
 
       - name: Upload Recorded Video
         uses: actions/upload-artifact@v4

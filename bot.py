@@ -55,7 +55,6 @@ async def main():
         for index, cookie_group in enumerate(cookies_list):
             print(f"\n🔑 アカウント [{index + 1} / {len(cookies_list)}] の処理を開始します...")
 
-            # 修正箇所: "height" にクォーテーションを追加
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
                 viewport={"width": 1920, "height": 1080},
@@ -115,11 +114,23 @@ async def main():
                         btn_count_total = await all_buttons.count()
                         print(f"🔍 ページ内の総ボタン数: {btn_count_total}")
 
-                        add_btns = page.locator('button, [role="button"], [data-testid*="add"], [data-testid*="create"]').filter(
+                        # 修正: テキストまたは aria-label に「追加」「投稿」「Add」等を含むボタンを広くキャッチする
+                        add_btns = page.locator(
+                            'button, [role="button"], [data-testid*="add"], [data-testid*="create"]'
+                        ).filter(
                             has_text=r"^\+$|Add|追加|投稿|Create|Make"
                         )
                         
+                        # aria-label属性も対象に含めるためのフォールバック/追加セレクター
+                        aria_add_btns = page.locator(
+                            'button[aria-label*="追加"], button[aria-label*="投稿"], button[aria-label*="Add"], button[aria-label*="書き始める"]'
+                        )
+
+                        # 通常のadd_btnsで見つからない場合はaria-labelベースのセレクターを採用
                         section_count = await add_btns.count()
+                        if section_count == 0:
+                            add_btns = aria_add_btns
+                            section_count = await add_btns.count()
 
                         if section_count == 0:
                             print("⚠️ 標準の追加ボタンが見つからないため、アイコンボタン等をスキャンします...")

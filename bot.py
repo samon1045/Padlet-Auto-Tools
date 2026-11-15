@@ -55,11 +55,12 @@ async def main():
         for index, cookie_group in enumerate(cookies_list):
             print(f"\n🔑 アカウント [{index + 1} / {len(cookies_list)}] の処理を開始します...")
 
+            # 修正箇所: "height" にクォーテーションを追加
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                viewport={"width": 1920, height: 1080},
+                viewport={"width": 1920, "height": 1080},
                 record_video_dir=str(videos_dir),
-                record_video_size={"width": 1920, height: 1080}
+                record_video_size={"width": 1920, "height": 1080}
             )
 
             if cookie_group and len(cookie_group) > 0:

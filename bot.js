@@ -44,7 +44,7 @@ async function main() {
         }
     }
 
-    const imagePath = path.join(__dirname, "a62e0a5b (1).gif");
+    const imagePath = path.join(__dirname, "_______.gif");
     const videoDir = path.join(__dirname, "videos");
     if (!fs.existsSync(videoDir)) {
         fs.mkdirSync(videoDir, { recursive: true });

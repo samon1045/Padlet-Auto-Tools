@@ -2,283 +2,306 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
+function parseBool(val, defaultVal = false) {
+    if (val === undefined || val === null || val === '') return defaultVal;
+    return String(val).toLowerCase() === 'true';
+}
+
+async function setEditableValue(locator, text) {
+    await locator.click();
+    await locator.fill(text);
+}
+
 async function main() {
     const targetUrl = process.env.TARGET_URL;
-    const customMessage = process.env.CUSTOM_MESSAGE || "さーもん万歳！！";
+    const titleMessage = process.env.TITLE_MESSAGE || "お知らせ";
+    const customMessage = process.env.CUSTOM_MESSAGE || "メッセージ";
     const authJsonsEnv = process.env.AUTH_JSONS;
-    
-    // 💡 2回（または環境変数指定の回数）繰り返す設定
-    const totalRounds = 2;
 
-    if (!targetUrl || !authJsonsEnv) {
-        console.error("❌ TARGET_URL または AUTH_JSONS が設定されていません。");
+    const totalRounds = Math.max(parseInt(process.env.TOTAL_ROUNDS || '2', 10) || 2, 1);
+    const enablePost = parseBool(process.env.ENABLE_POST, true);
+    const enableComment = parseBool(process.env.ENABLE_COMMENT, true);
+    const useGuest = parseBool(process.env.USE_GUEST, false);
+
+    if (!targetUrl) {
+        console.error("❌ TARGET_URL が設定されていません。");
         process.exit(1);
     }
 
-    let accountCookieLists = [];
-    try {
-        accountCookieLists = JSON.parse(authJsonsEnv);
-        if (!Array.isArray(accountCookieLists[0])) {
-            accountCookieLists = [accountCookieLists];
-        }
-    } catch (e) {
-        console.error("❌ クッキーのパースに失敗しました:", e);
+    if (!useGuest && !authJsonsEnv) {
+        console.error("❌ USE_GUEST が false の場合、AUTH_JSONS が必要です。");
         process.exit(1);
+    }
+
+    let accountCookieLists = [[]];
+    if (!useGuest) {
+        try {
+            const parsed = JSON.parse(authJsonsEnv);
+            accountCookieLists = Array.isArray(parsed[0]) ? parsed : [parsed];
+        } catch (e) {
+            console.error("❌ クッキーのパースに失敗しました:", e);
+            process.exit(1);
+        }
     }
 
     const imagePath = path.join(__dirname, "a62e0a5b (1).gif");
+    const videoDir = path.join(__dirname, "videos");
+    if (!fs.existsSync(videoDir)) {
+        fs.mkdirSync(videoDir, { recursive: true });
+    }
 
     const browser = await chromium.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu"
+        ]
     });
 
-    for (let index = 0; index < accountCookieLists.length; index++) {
-        const cookies = accountCookieLists[index];
-        const authFile = `auth-${index}.json`;
-        const accountNum = index + 1;
+    try {
+        for (let index = 0; index < accountCookieLists.length; index++) {
+            const accountNum = index + 1;
+            const contextOptions = {
+                recordVideoDir: videoDir,
+                recordVideoSize: { width: 1280, height: 720 }
+            };
 
-        console.log(`\n🔑 アカウント #${accountNum} でログイン処理中...`);
-
-        const cleanedCookies = cookies.map(c => ({
-            ...c,
-            sameSite: ["Strict", "Lax", "None"].includes(c.sameSite) ? c.sameSite : "Lax"
-        }));
-
-        fs.writeFileSync(authFile, JSON.stringify({ cookies: cleanedCookies, origins: [] }, null, 2));
-
-        const videoDir = "videos";
-        if (!fs.existsSync(videoDir)) {
-            fs.mkdirSync(videoDir, { recursive: true });
-        }
-
-        const context = await browser.newContext({
-            storageState: authFile,
-            recordVideoDir: videoDir,
-            recordVideoSize: { width: 1280, height: 720 }
-        });
-
-        const page = await context.new_page();
-
-        try {
-            console.log("ボードにアクセス中...");
-            await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(6000);
-
-            if (page.url().includes("login") || page.url().includes("verify")) {
-                throw new Error("ログインセッションが無効です。");
+            let authFile = null;
+            if (!useGuest) {
+                const cookies = accountCookieLists[index] || [];
+                const cleanedCookies = cookies.map(c => ({
+                    ...c,
+                    sameSite: ["Strict", "Lax", "None"].includes(c.sameSite) ? c.sameSite : "Lax"
+                }));
+                authFile = path.join(__dirname, `auth-${index}.json`);
+                fs.writeFileSync(authFile, JSON.stringify({ cookies: cleanedCookies, origins: [] }, null, 2));
+                contextOptions.storageState = authFile;
             }
 
-            console.log(`ボード読み込み成功！全 ${totalRounds} ラウンドを実行します。`);
+            console.log(`\n🔑 アカウント #${accountNum} (ゲストモード: ${useGuest}) で実行開始...`);
+            const context = await browser.newContext(contextOptions);
+            const page = await context.newPage();
 
-            for (let roundNum = 1; roundNum <= totalRounds; roundNum++) {
-                console.log(`\n--- ラウンド ${roundNum} / ${totalRounds} ---`);
+            try {
+                console.log("ボードにアクセス中...");
+                await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+                await page.waitForTimeout(6000);
 
-                // 1. セクション数を取得
-                const totalSections = await page.evaluate(() => {
-                    const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
-                    let count = 0;
-                    for (let btn of addBtns) {
-                        const rect = btn.getBoundingClientRect();
-                        const text = (btn.innerText || '').trim();
-                        const aria = btn.getAttribute('aria-label') || '';
-                        if ((text === '+' || aria.includes('Add') || aria.includes('追加') || btn.className.includes('add')) && rect.y > 0 && rect.y < 350 && rect.width > 0) {
-                            count++;
-                        }
-                    }
-                    return count;
-                });
-
-                console.log(`📝 検出したセクション数: ${totalSections}`);
-                const loopCount = Math.max(totalSections, 1);
-
-                // 2. 各セクションへの投稿作成・画像添付・送信
-                for (let secIdx = 0; secIdx < loopCount; secIdx++) {
-                    console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
-
-                    const result = await page.evaluate(async ({ secIndex, message }) => {
-                        const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
-                        let count = 0;
-                        let targetBtn = null;
-                        for (let btn of addBtns) {
-                            const rect = btn.getBoundingClientRect();
-                            const text = (btn.innerText || '').trim();
-                            const aria = btn.getAttribute('aria-label') || '';
-                            if ((text === '+' || aria.includes('Add') || aria.includes('追加') || btn.className.includes('add')) && rect.y > 0 && rect.y < 350 && rect.width > 0) {
-                                if (count === secIndex) {
-                                    targetBtn = btn;
-                                    break;
-                                }
-                                count++;
-                            }
-                        }
-
-                        if (!targetBtn) return { success: false, reason: 'Add button not found' };
-                        targetBtn.click();
-                        await new Promise(r => setTimeout(r, 1500));
-
-                        // タイトルとメッセージの入力
-                        const editables = Array.from(document.querySelectorAll('div[contenteditable="true"], textarea, input[type="text"]'));
-                        if (editables.length > 0) {
-                            const titleEl = editables[0];
-                            titleEl.focus();
-                            if (titleEl.tagName === 'DIV') titleEl.innerText = message;
-                            else titleEl.value = message;
-                            titleEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-
-                        if (editables.length > 1) {
-                            const bodyEl = editables[1];
-                            bodyEl.focus();
-                            if (bodyEl.tagName === 'DIV') bodyEl.innerText = message;
-                            else bodyEl.value = message;
-                            bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-
-                        await new Promise(r => setTimeout(r, 1000));
-
-                        // 公開（Publish）ボタンの位置・座標ベースでの特定とクリック
-                        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-                        let pubBtn = null;
-                        for (let b of buttons) {
-                            const t = (b.innerText || '').trim();
-                            const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                            const testid = (b.getAttribute('data-testid') || '').toLowerCase();
-                            const rect = b.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
-                                if (
-                                    t.includes('公開') || t.includes('Publish') || t.includes('送信') ||
-                                    a.includes('publish') || a.includes('submit') || a.includes('send') ||
-                                    testid.includes('publish') || testid.includes('submit') ||
-                                    b.className.includes('primary') || b.className.includes('submit')
-                                ) {
-                                    pubBtn = b;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!pubBtn) {
-                            let rightMostX = 0;
-                            for (let b of buttons) {
-                                const rect = b.getBoundingClientRect();
-                                if (rect.width > 0 && rect.height > 0 && rect.y < window.innerHeight / 2 && rect.x > rightMostX) {
-                                    rightMostX = rect.x;
-                                    pubBtn = b;
-                                }
-                            }
-                        }
-
-                        if (pubBtn) {
-                            pubBtn.click();
-                            return { success: true };
-                        }
-
-                        return { success: false, reason: 'Publish button not found' };
-                    }, { secIndex: secIdx, message: customMessage });
-
-                    // 画像ファイルのアップロード処理（ファイルが存在する場合）
-                    if (fs.existsSync(imagePath)) {
-                        try {
-                            const fileInput = await page.$('input[type="file"]');
-                            if (fileInput) {
-                                await fileInput.setInputFiles(imagePath);
-                                await page.waitForTimeout(2000);
-                            }
-                        } catch (imgErr) {
-                            console.log(`⚠️ 画像アップロードスキップ: ${imgErr.message}`);
-                        }
-                    }
-
-                    if (result.success) {
-                        console.log(`🚀 セクション ${secIdx + 1} の投稿を送信しました！`);
-                    } else {
-                        console.log(`⚠️ ボタン直接押下失敗、ショートカットを試します (${result.reason})`);
-                        await page.keyboard.press("Control+Enter");
-                    }
-
-                    await page.waitForTimeout(3500);
+                const currentUrl = page.url();
+                if (!useGuest && (currentUrl.includes("login") || currentUrl.includes("verify"))) {
+                    throw new Error("ログインセッションが無効です。");
                 }
 
-                // 3. コメント巡回・送信処理
-                console.log("⚡ コメント巡回を実行中...");
-                const commentCount = await page.evaluate(async ({ commentMsg }) => {
-                    let count = 0;
-                    for (let i = 0; i < 30; i++) {
-                        const allEls = Array.from(document.querySelectorAll('button, [role="button"], span, div'));
-                        let cBtn = null;
-                        for (let el of allEls) {
-                            const t = (el.innerText || '').trim();
-                            const a = el.getAttribute('aria-label') || '';
-                            if (t.includes('Add comment') || t.includes('コメントを追加') || a.includes('comment')) {
-                                const rect = el.getBoundingClientRect();
-                                if (rect.width > 0 && rect.height > 0) {
-                                    cBtn = el;
-                                    break;
+                console.log(`ボード読み込み成功！全 ${totalRounds} ラウンドを実行します。`);
+
+                for (let roundNum = 1; roundNum <= totalRounds; roundNum++) {
+                    console.log(`\n--- ラウンド ${roundNum} / ${totalRounds} ---`);
+
+                    if (enablePost) {
+                        const totalSections = await page.evaluate(() => {
+                            const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
+                            let count = 0;
+                            for (const btn of addBtns) {
+                                const rect = btn.getBoundingClientRect();
+                                const text = (btn.innerText || '').trim();
+                                const aria = btn.getAttribute('aria-label') || '';
+                                const cls = typeof btn.className === 'string' ? btn.className : '';
+                                if (
+                                    (text === '+' || aria.includes('Add') || aria.includes('追加') || cls.includes('add')) &&
+                                    rect.y > 0 && rect.y < 350 && rect.width > 0
+                                ) {
+                                    count++;
                                 }
                             }
+                            return count;
+                        });
+
+                        console.log(`📝 検出したセクション数: ${totalSections}`);
+                        const loopCount = Math.max(totalSections, 1);
+
+                        for (let secIdx = 0; secIdx < loopCount; secIdx++) {
+                            console.log(`➡️ セクション ${secIdx + 1} への投稿を作成中...`);
+
+                            const clickedAdd = await page.evaluate((targetIdx) => {
+                                const addBtns = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="add"]'));
+                                let count = 0;
+                                for (const btn of addBtns) {
+                                    const rect = btn.getBoundingClientRect();
+                                    const text = (btn.innerText || '').trim();
+                                    const aria = btn.getAttribute('aria-label') || '';
+                                    const cls = typeof btn.className === 'string' ? btn.className : '';
+                                    if (
+                                        (text === '+' || aria.includes('Add') || aria.includes('追加') || cls.includes('add')) &&
+                                        rect.y > 0 && rect.y < 350 && rect.width > 0
+                                    ) {
+                                        if (count === targetIdx) {
+                                            btn.click();
+                                            return true;
+                                        }
+                                        count++;
+                                    }
+                                }
+                                return false;
+                            }, secIdx);
+
+                            if (!clickedAdd) {
+                                console.log(`⚠️ セクション ${secIdx + 1} の追加ボタンが見つかりませんでした。`);
+                                continue;
+                            }
+
+                            await page.waitForTimeout(1500);
+
+                            // タイトルと本文の入力
+                            const editables = page.locator('div[contenteditable="true"], textarea, input[type="text"]');
+                            const editableCount = await editables.count();
+                            if (editableCount > 0) {
+                                await setEditableValue(editables.nth(0), titleMessage);
+                            }
+                            if (editableCount > 1) {
+                                await setEditableValue(editables.nth(1), customMessage);
+                            }
+
+                            await page.waitForTimeout(800);
+
+                            // 公開ボタン押下前に画像ファイルをセット
+                            if (fs.existsSync(imagePath)) {
+                                try {
+                                    const fileInput = page.locator('input[type="file"]').first();
+                                    if (await fileInput.count() > 0) {
+                                        await fileInput.setInputFiles(imagePath);
+                                        await page.waitForTimeout(2000);
+                                    }
+                                } catch (imgErr) {
+                                    console.log(`⚠️ 画像アップロードスキップ: ${imgErr.message}`);
+                                }
+                            }
+
+                            // 公開ボタンのクリック
+                            const pubClicked = await page.evaluate(() => {
+                                const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                                for (const b of buttons) {
+                                    const t = (b.innerText || '').trim();
+                                    const a = (b.getAttribute('aria-label') || '').toLowerCase();
+                                    const testid = (b.getAttribute('data-testid') || '').toLowerCase();
+                                    const cls = typeof b.className === 'string' ? b.className : '';
+                                    const rect = b.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0 && rect.x > window.innerWidth / 2) {
+                                        if (
+                                            t.includes('公開') || t.includes('Publish') || t.includes('送信') ||
+                                            a.includes('publish') || a.includes('submit') || a.includes('send') ||
+                                            testid.includes('publish') || testid.includes('submit') ||
+                                            cls.includes('primary') || cls.includes('submit')
+                                        ) {
+                                            b.click();
+                                            return true;
+                                        }
+                                    }
+                                }
+                                return false;
+                            });
+
+                            if (pubClicked) {
+                                console.log(`🚀 セクション ${secIdx + 1} の投稿を送信しました。`);
+                            } else {
+                                console.log(`⚠️ 公開ボタン未検出のためショートカットを試行します。`);
+                                await page.keyboard.press("Control+Enter");
+                            }
+
+                            await page.waitForTimeout(3500);
                         }
+                    } else {
+                        console.log("⏭️ ENABLE_POST が false のため投稿処理をスキップします。");
+                    }
 
-                        if (!cBtn) break;
-                        cBtn.click();
-                        await new Promise(r => setTimeout(r, 1200));
+                    if (enableComment) {
+                        console.log("⚡ コメント処理を実行中...");
+                        let sentComments = 0;
 
-                        const editor = document.querySelector('div[contenteditable="true"], textarea');
-                        if (!editor) {
-                            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-                            break;
-                        }
+                        for (let i = 0; i < 30; i++) {
+                            const opened = await page.evaluate(() => {
+                                const allEls = Array.from(document.querySelectorAll('button, [role="button"], span, div'));
+                                for (const el of allEls) {
+                                    const t = (el.innerText || '').trim();
+                                    const a = el.getAttribute('aria-label') || '';
+                                    if (t.includes('Add comment') || t.includes('コメントを追加') || a.toLowerCase().includes('comment')) {
+                                        const rect = el.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0) {
+                                            el.click();
+                                            return true;
+                                        }
+                                    }
+                                }
+                                return false;
+                            });
 
-                        editor.focus();
-                        if (editor.tagName === 'DIV') editor.innerText = commentMsg;
-                        else editor.value = commentMsg;
-                        editor.dispatchEvent(new Event('input', { bubbles: true }));
+                            if (!opened) break;
+                            await page.waitForTimeout(1200);
 
-                        await new Promise(r => setTimeout(r, 800));
-
-                        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-                        let sent = false;
-                        for (let b of buttons) {
-                            const t = (b.innerText || '').trim();
-                            const a = (b.getAttribute('aria-label') || '').toLowerCase();
-                            const rect = b.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0 && (t.includes('コメント') || t.includes('Comment') || a.includes('send') || a.includes('送信'))) {
-                                b.click();
-                                sent = true;
+                            const editor = page.locator('div[contenteditable="true"], textarea').last();
+                            if (await editor.count() === 0) {
+                                await page.keyboard.press('Escape');
                                 break;
                             }
+
+                            await setEditableValue(editor, customMessage);
+                            await page.waitForTimeout(800);
+
+                            const sentByButton = await page.evaluate(() => {
+                                const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                                for (const b of buttons) {
+                                    const t = (b.innerText || '').trim();
+                                    const a = (b.getAttribute('aria-label') || '').toLowerCase();
+                                    const rect = b.getBoundingClientRect();
+                                    if (
+                                        rect.width > 0 && rect.height > 0 &&
+                                        (t.includes('コメント') || t.includes('Comment') || a.includes('send') || a.includes('送信'))
+                                    ) {
+                                        b.click();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            });
+
+                            if (!sentByButton) {
+                                await page.keyboard.press('Enter');
+                            }
+
+                            sentComments++;
+                            await page.waitForTimeout(2000);
                         }
 
-                        if (!sent) {
-                            editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-                        }
-
-                        count++;
-                        await new Promise(r => setTimeout(r, 2000));
+                        console.log(`✨ コメント処理が完了しました。合計 ${sentComments} 件送信しました。`);
+                    } else {
+                        console.log("⏭️ ENABLE_COMMENT が false のためコメント処理をスキップします。");
                     }
-                    return count;
-                }, { commentMsg: customMessage });
 
-                console.log(`✨ コメント巡回が完了しました。合計 ${commentCount} 件送信しました。`);
+                    if (roundNum < totalRounds) {
+                        console.log("🔄 次のラウンドへ向けてボードを再読み込みします...");
+                        await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+                        await page.waitForTimeout(5000);
+                    }
+                }
 
-                if (roundNum < totalRounds) {
-                    console.log("🔄 次のラウンドへ向けてボードを再読み込みします...");
-                    await page.reload({ waitUntil: "domcontentloaded" });
-                    await page.waitForTimeout(5000);
+                await context.close();
+                if (authFile && fs.existsSync(authFile)) {
+                    fs.unlinkSync(authFile);
+                }
+                console.log(`✅ アカウント #${accountNum} の全処理が完了しました。`);
+                break;
+            } catch (err) {
+                console.error(`❌ アカウント #${accountNum} エラー:`, err);
+                await context.close();
+                if (authFile && fs.existsSync(authFile)) {
+                    fs.unlinkSync(authFile);
                 }
             }
-
-            await context.close();
-            console.log(`✅ アカウント #${accountNum} の全処理が完了しました。`);
-            break;
-
-        } catch (err) {
-            console.error(`❌ アカウント #${accountNum} エラー:`, err);
-            await context.close();
         }
+    } finally {
+        await browser.close();
     }
-
-    await browser.close();
 }
 
 main();

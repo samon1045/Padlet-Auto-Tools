@@ -153,7 +153,6 @@ async function main() {
 
                             await page.waitForTimeout(1500);
 
-                            // タイトルと本文の入力
                             const editables = page.locator('div[contenteditable="true"], textarea, input[type="text"]');
                             const editableCount = await editables.count();
                             if (editableCount > 0) {
@@ -165,7 +164,6 @@ async function main() {
 
                             await page.waitForTimeout(800);
 
-                            // 公開ボタン押下前に画像ファイルをセット
                             if (fs.existsSync(imagePath)) {
                                 try {
                                     const fileInput = page.locator('input[type="file"]').first();

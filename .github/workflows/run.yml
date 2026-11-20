@@ -6,7 +6,7 @@ on:
       target_url:
         description: '対象のPadlet URL'
         required: true
-        default: 'https://padlet.com/kamisngi/daiki-o1ocnzud4hb082q'
+        default: ''
       total_rounds:
         description: '実行ラウンド数'
         required: true
@@ -26,11 +26,11 @@ on:
       title_message:
         description: '投稿のタイトル'
         required: false
-        default: 'さーもんの集いにさんか！！https://sus5.netlify.app/#SamonTudoiPado'
+        default: 'シベリア共栄圏にさんか！！https://script.google.com/macros/s/AKfycbxvrapbCANCrtEeIA-tK8OdAWwNo4P3U7W1XQ8qz-FAN1wBEIIaLbajKFcZ5LMKKYgxUQ/exec'
       custom_message:
         description: '投稿本文およびコメントメッセージ'
         required: false
-        default: 'お前らやりませんね杉！！ここはさーもんの集いに荒らされました！ｗ今すぐサーモンの集いに参加！https://sus5.netlify.app/#SamonTudoiPado パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
+        default: 'お前らやりませんね杉！！ここはシベリア共栄圏に荒らされました！ｗ今すぐシベリア共栄圏に参加！https://script.google.com/macros/s/AKfycbxvrapbCANCrtEeIA-tK8OdAWwNo4P3U7W1XQ8qz-FAN1wBEIIaLbajKFcZ5LMKKYgxUQ/exec パスワードがわからない人はあきらめてねー！ww普通はわかるけどねwww荒らしかえすことだけしか考えれないのかｗｗｗ ぜひ参加してねww 荒らし対策もうちょっとしてね～wwもっと頑張ってねwwじゃあお疲れｗそんじゃがんばれがんばれｗｗ'
 
 jobs:
   run-bot:

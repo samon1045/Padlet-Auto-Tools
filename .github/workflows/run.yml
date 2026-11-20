@@ -37,20 +37,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.10'
+          node-version: '20'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: npm ci
 
       - name: Install Playwright Browsers
-        run: playwright install chromium --with-deps
+        run: npx playwright install chromium --with-deps
 
       - name: Run Bot
         env:
@@ -62,7 +60,7 @@ jobs:
           USE_GUEST: ${{ github.event.inputs.use_guest }}
           TITLE_MESSAGE: ${{ github.event.inputs.title_message }}
           CUSTOM_MESSAGE: ${{ github.event.inputs.custom_message }}
-        run: python bot.py
+        run: node bot.js
 
       - name: Upload Recorded Video
         uses: actions/upload-artifact@v4
